@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/kpi/sync-gsc",            "schedule": "0 6 * * *"  },
+    { "path": "/api/kpi/sync-ga4",            "schedule": "15 6 * * *" },
+    { "path": "/api/kpi/geo-audit",           "schedule": "0 8 * * 1"  },
+    { "path": "/api/editorial/adjust-plan",   "schedule": "0 9 1 * *"  }
+  ]
+}

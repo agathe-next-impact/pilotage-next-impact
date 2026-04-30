@@ -1,0 +1,130 @@
+// Schéma Prisma — Pilotage Next Impact
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Prod : Vercel Postgres (Neon) — DATABASE_URL injecté automatiquement.
+  // Dev local : créer un projet Neon perso ou utiliser POSTGRES_URL_NON_POOLING.
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// 1 snapshot = 1 mois de données pour les 3 canaux + trafic global
+// =============================================================================
+model Snapshot {
+  id        Int      @id @default(autoincrement())
+  /// Période YYYY-MM (ex : "2026-04")
+  period    String   @unique
+  /// manual | gsc | ga4 | geo-audit | mixed
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // LinkedIn
+  linkedinFollowers       Int?
+  linkedinImpressions     Int?
+  linkedinEngagementRate  Float?
+  linkedinDmsQualified    Int?
+  linkedinFormLeads       Int?
+  linkedinPostsPublished  Int?
+
+  // Newsletter Substack
+  nlSubscribers      Int?
+  nlOpenRate         Float?
+  nlCtrResource      Float?
+  nlUnsubscribeRate  Float?
+  nlLeadsMentioning  Int?
+  nlEditionNumber    Int?
+
+  // SEO
+  seoClicks        Int?
+  seoImpressions   Int?
+  seoPagesIndexed  Int?
+  seoPagesTop10    Int?
+  seoAvgPosition   Float?
+
+  // GEO
+  geoShareOfVoice    Float?
+  geoCitationsCount  Int?
+  geoReferralTraffic Int?
+
+  // GA4
+  ga4Sessions     Int?
+  ga4Users        Int?
+  ga4Conversions  Int?
+
+  geoAuditRuns GeoAuditRun[]
+}
+
+model GeoAuditRun {
+  id       Int      @id @default(autoincrement())
+  snapshot Snapshot @relation(fields: [period], references: [period], onDelete: Cascade)
+  period   String
+  ranAt    DateTime @default(now())
+  payload  String
+
+  @@index([period])
+}
+
+model LoginAttempt {
+  id        Int      @id @default(autoincrement())
+  ip        String
+  email     String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([email, createdAt])
+}
+
+model ContentItem {
+  id             Int      @id @default(autoincrement())
+  slug           String   @unique
+  type           String
+  trackKey       String
+  plannedFor     DateTime
+  status         String   @default("planned")
+  subject        String
+  brief          String
+  draft          String?
+  finalBody      String?
+  generatedModel String?
+  generatedAt    DateTime?
+  validatedAt    DateTime?
+  publishedAt    DateTime?
+  meta           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  revisions ContentRevision[]
+
+  @@index([type, plannedFor])
+  @@index([status])
+}
+
+model ContentRevision {
+  id        Int         @id @default(autoincrement())
+  contentId Int
+  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  payload   String
+  createdAt DateTime    @default(now())
+
+  @@index([contentId, createdAt])
+}
+
+model PlanRevision {
+  id            Int       @id @default(autoincrement())
+  scope         String
+  status        String    @default("pending")
+  basedOnPeriod String
+  payload       String
+  model         String
+  createdAt     DateTime  @default(now())
+  appliedAt     DateTime?
+  rejectedAt    DateTime?
+
+  @@index([scope, status])
+}
