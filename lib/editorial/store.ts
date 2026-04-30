@@ -16,11 +16,9 @@ import type {
   PlanRevisionPayload,
   PlanRevisionStatus,
   PlanScope,
+  MediaAsset,
+  MediaKind,
 } from "./types";
-
-// =============================================================================
-// Mapping DB → Domain
-// =============================================================================
 
 interface DbContentItem {
   id: number;
@@ -30,9 +28,11 @@ interface DbContentItem {
   plannedFor: Date;
   status: string;
   subject: string;
+  finalSubject: string | null;
   brief: string;
   draft: string | null;
   finalBody: string | null;
+  publishedUrl: string | null;
   generatedModel: string | null;
   generatedAt: Date | null;
   validatedAt: Date | null;
@@ -61,16 +61,26 @@ interface DbPlanRevision {
   rejectedAt: Date | null;
 }
 
-function safeJsonParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
+interface DbMediaAsset {
+  id: number;
+  contentId: number;
+  kind: string;
+  url: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  alt: string | null;
+  caption: string | null;
+  position: number;
+  createdAt: Date;
 }
 
-function toContentItem(row: DbContentItem): ContentItem {
+function safeJsonParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+function toContentItem(row: DbContentItem, media?: DbMediaAsset[]): ContentItem {
   return {
     id: row.id,
     slug: row.slug,
@@ -79,9 +89,11 @@ function toContentItem(row: DbContentItem): ContentItem {
     plannedFor: row.plannedFor.toISOString(),
     status: row.status as ContentStatus,
     subject: row.subject,
+    finalSubject: row.finalSubject,
     brief: row.brief,
     draft: row.draft,
     finalBody: row.finalBody,
+    publishedUrl: row.publishedUrl,
     generatedModel: row.generatedModel,
     generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
     validatedAt: row.validatedAt ? row.validatedAt.toISOString() : null,
@@ -89,6 +101,23 @@ function toContentItem(row: DbContentItem): ContentItem {
     meta: safeJsonParse<Record<string, unknown>>(row.meta),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    media: media ? media.map(toMediaAsset) : undefined,
+  };
+}
+
+function toMediaAsset(row: DbMediaAsset): MediaAsset {
+  return {
+    id: row.id,
+    contentId: row.contentId,
+    kind: row.kind as MediaKind,
+    url: row.url,
+    filename: row.filename,
+    size: row.size,
+    mimeType: row.mimeType,
+    alt: row.alt,
+    caption: row.caption,
+    position: row.position,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -97,11 +126,7 @@ function toContentRevision(row: DbContentRevision): ContentRevision {
     id: row.id,
     contentId: row.contentId,
     payload: (safeJsonParse<GeneratedDraft>(row.payload) ?? {
-      subject: "",
-      body: "",
-      selfReview: "",
-      model: "",
-      prompt: "",
+      subject: "", body: "", selfReview: "", model: "", prompt: "",
     }) as GeneratedDraft,
     createdAt: row.createdAt.toISOString(),
   };
@@ -114,9 +139,7 @@ function toPlanRevision(row: DbPlanRevision): PlanRevision {
     status: row.status as PlanRevisionStatus,
     basedOnPeriod: row.basedOnPeriod,
     payload: (safeJsonParse<PlanRevisionPayload>(row.payload) ?? {
-      rationale: "",
-      perfSummary: "",
-      changes: [],
+      rationale: "", perfSummary: "", changes: [],
     }) as PlanRevisionPayload,
     model: row.model,
     createdAt: row.createdAt.toISOString(),
@@ -125,9 +148,7 @@ function toPlanRevision(row: DbPlanRevision): PlanRevision {
   };
 }
 
-// =============================================================================
-// ContentItem queries
-// =============================================================================
+// ContentItem queries -------------------------------------------------------
 
 export async function listContentItems(filter?: {
   type?: ContentType;
@@ -140,12 +161,18 @@ export async function listContentItems(filter?: {
     },
     orderBy: { plannedFor: "asc" },
   });
-  return rows.map(toContentItem);
+  return rows.map((r: DbContentItem) => toContentItem(r));
 }
 
-export async function getContentItem(id: number): Promise<ContentItem | null> {
+export async function getContentItem(id: number, includeMedia = false): Promise<ContentItem | null> {
   const row = await prisma.contentItem.findUnique({ where: { id } });
-  return row ? toContentItem(row) : null;
+  if (!row) return null;
+  if (!includeMedia) return toContentItem(row);
+  const media = await prisma.mediaAsset.findMany({
+    where: { contentId: id },
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+  });
+  return toContentItem(row, media);
 }
 
 export async function getContentItemBySlug(slug: string): Promise<ContentItem | null> {
@@ -153,10 +180,7 @@ export async function getContentItemBySlug(slug: string): Promise<ContentItem | 
   return row ? toContentItem(row) : null;
 }
 
-export async function attachDraft(
-  id: number,
-  draft: GeneratedDraft
-): Promise<ContentItem> {
+export async function attachDraft(id: number, draft: GeneratedDraft): Promise<ContentItem> {
   const row = await prisma.contentItem.update({
     where: { id },
     data: {
@@ -173,16 +197,35 @@ export async function attachDraft(
   return toContentItem(row);
 }
 
-export async function validateContent(
-  id: number,
-  finalBody: string
-): Promise<ContentItem> {
+/**
+ * Sauvegarde la version finale (sujet + corps).
+ * Si publish=true, marque aussi comme validé.
+ */
+export async function saveFinalContent(input: {
+  id: number;
+  finalSubject: string;
+  finalBody: string;
+  validate?: boolean;
+}): Promise<ContentItem> {
+  const row = await prisma.contentItem.update({
+    where: { id: input.id },
+    data: {
+      finalSubject: input.finalSubject,
+      finalBody: input.finalBody,
+      ...(input.validate
+        ? { status: "validated", validatedAt: new Date() }
+        : {}),
+    },
+  });
+  return toContentItem(row);
+}
+
+export async function setPublishedUrl(id: number, url: string | null): Promise<ContentItem> {
   const row = await prisma.contentItem.update({
     where: { id },
     data: {
-      finalBody,
-      status: "validated",
-      validatedAt: new Date(),
+      publishedUrl: url,
+      ...(url ? { status: "published", publishedAt: new Date() } : {}),
     },
   });
   return toContentItem(row);
@@ -196,6 +239,14 @@ export async function markPublished(id: number): Promise<ContentItem> {
   return toContentItem(row);
 }
 
+export async function markSkipped(id: number): Promise<ContentItem> {
+  const row = await prisma.contentItem.update({
+    where: { id },
+    data: { status: "skipped" },
+  });
+  return toContentItem(row);
+}
+
 export async function listRevisions(contentId: number): Promise<ContentRevision[]> {
   const rows = await prisma.contentRevision.findMany({
     where: { contentId },
@@ -204,9 +255,7 @@ export async function listRevisions(contentId: number): Promise<ContentRevision[
   return rows.map(toContentRevision);
 }
 
-// =============================================================================
-// PlanRevision queries
-// =============================================================================
+// PlanRevision queries ------------------------------------------------------
 
 export async function createPlanRevision(input: {
   scope: PlanScope;
@@ -239,8 +288,6 @@ export async function applyPlanRevision(id: number): Promise<PlanRevision> {
   if (!row) throw new Error("PlanRevision introuvable.");
   const revision = toPlanRevision(row);
 
-  // Applique chaque change atomiquement.
-  // (tx typé `any` car le client Prisma est généré au postinstall — voir lib/kpi/store.ts)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await prisma.$transaction(async (tx: any) => {
     for (const change of revision.payload.changes) {

@@ -15,17 +15,37 @@ export type PlanScope = "linkedin" | "newsletter" | "seo" | "global";
 
 export type PlanRevisionStatus = "pending" | "applied" | "rejected";
 
+export type MediaKind = "image" | "video" | "document";
+
+export interface MediaAsset {
+  id: number;
+  contentId: number;
+  kind: MediaKind;
+  url: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  alt: string | null;
+  caption: string | null;
+  position: number;
+  createdAt: string;
+}
+
 export interface ContentItem {
   id: number;
   slug: string;
   type: ContentType;
   trackKey: string;
-  plannedFor: string; // ISO date
+  plannedFor: string;
   status: ContentStatus;
   subject: string;
+  /** Sujet final éditable (après revue humaine). */
+  finalSubject: string | null;
   brief: string;
   draft: string | null;
   finalBody: string | null;
+  /** URL publique du post une fois publié. */
+  publishedUrl: string | null;
   generatedModel: string | null;
   generatedAt: string | null;
   validatedAt: string | null;
@@ -33,6 +53,8 @@ export interface ContentItem {
   meta: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  /** Médias attachés (chargés à la demande). */
+  media?: MediaAsset[];
 }
 
 export interface ContentRevision {
@@ -42,15 +64,11 @@ export interface ContentRevision {
   createdAt: string;
 }
 
-/** Forme du JSON renvoyé par Claude lors d'une génération. */
 export interface GeneratedDraft {
   subject: string;
   body: string;
-  /** Bloc d'auto-critique de Claude — visible côté admin. */
   selfReview: string;
-  /** Modèle utilisé. */
   model: string;
-  /** Brief + feedback éventuel utilisés pour générer. */
   prompt: string;
   feedback?: string;
 }
@@ -58,7 +76,6 @@ export interface GeneratedDraft {
 export interface PlanChange {
   contentId: number;
   slug: string;
-  /** Type de changement proposé. */
   kind: "reschedule" | "rewrite-subject" | "rewrite-brief" | "skip" | "split";
   before: {
     subject: string;
@@ -75,7 +92,6 @@ export interface PlanChange {
 
 export interface PlanRevisionPayload {
   rationale: string;
-  /** Synthèse chiffrée de la performance qui motive l'ajustement. */
   perfSummary: string;
   changes: PlanChange[];
 }

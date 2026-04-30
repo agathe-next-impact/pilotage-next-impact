@@ -5,25 +5,17 @@ generator client {
 }
 
 datasource db {
-  // Prod : Vercel Postgres (Neon) — DATABASE_URL injecté automatiquement.
-  // Dev local : créer un projet Neon perso ou utiliser POSTGRES_URL_NON_POOLING.
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// =============================================================================
-// 1 snapshot = 1 mois de données pour les 3 canaux + trafic global
-// =============================================================================
 model Snapshot {
   id        Int      @id @default(autoincrement())
-  /// Période YYYY-MM (ex : "2026-04")
   period    String   @unique
-  /// manual | gsc | ga4 | geo-audit | mixed
   source    String   @default("manual")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // LinkedIn
   linkedinFollowers       Int?
   linkedinImpressions     Int?
   linkedinEngagementRate  Float?
@@ -31,7 +23,6 @@ model Snapshot {
   linkedinFormLeads       Int?
   linkedinPostsPublished  Int?
 
-  // Newsletter Substack
   nlSubscribers      Int?
   nlOpenRate         Float?
   nlCtrResource      Float?
@@ -39,19 +30,16 @@ model Snapshot {
   nlLeadsMentioning  Int?
   nlEditionNumber    Int?
 
-  // SEO
   seoClicks        Int?
   seoImpressions   Int?
   seoPagesIndexed  Int?
   seoPagesTop10    Int?
   seoAvgPosition   Float?
 
-  // GEO
   geoShareOfVoice    Float?
   geoCitationsCount  Int?
   geoReferralTraffic Int?
 
-  // GA4
   ga4Sessions     Int?
   ga4Users        Int?
   ga4Conversions  Int?
@@ -87,10 +75,18 @@ model ContentItem {
   trackKey       String
   plannedFor     DateTime
   status         String   @default("planned")
+  /// Sujet planifié (issu du brief)
   subject        String
+  /// Sujet final éditable par l'utilisatrice (après revue)
+  finalSubject   String?
+  /// Brief court de référence
   brief          String
+  /// Dernier draft généré par Claude
   draft          String?
+  /// Version finale validée et prête à publier (markdown éditable)
   finalBody      String?
+  /// URL publique du post une fois publié (LinkedIn URL, lien Substack, URL article)
+  publishedUrl   String?
   generatedModel String?
   generatedAt    DateTime?
   validatedAt    DateTime?
@@ -100,6 +96,7 @@ model ContentItem {
   updatedAt      DateTime @updatedAt
 
   revisions ContentRevision[]
+  media     MediaAsset[]
 
   @@index([type, plannedFor])
   @@index([status])
@@ -113,6 +110,26 @@ model ContentRevision {
   createdAt DateTime    @default(now())
 
   @@index([contentId, createdAt])
+}
+
+model MediaAsset {
+  id        Int         @id @default(autoincrement())
+  contentId Int
+  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  /// "image" | "video" | "document"
+  kind      String
+  /// URL Vercel Blob
+  url       String
+  filename  String
+  size      Int
+  mimeType  String
+  alt       String?
+  caption   String?
+  /// Ordre d'affichage dans la galerie
+  position  Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  @@index([contentId, position])
 }
 
 model PlanRevision {

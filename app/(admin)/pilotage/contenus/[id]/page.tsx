@@ -4,7 +4,7 @@ import { getContentItem, listRevisions } from "@/lib/editorial/store";
 import { Card, CardBody, SectionTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/editorial/StatusBadge";
 import { GenerateForm } from "@/components/editorial/GenerateForm";
-import { ValidateForm } from "@/components/editorial/ValidateForm";
+import { ContentEditor } from "@/components/editorial/ContentEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export default async function ContentItemPage({
   const numId = Number.parseInt(id, 10);
   if (!Number.isFinite(numId)) notFound();
 
-  const item = await getContentItem(numId);
+  const item = await getContentItem(numId, /* includeMedia */ true);
   if (!item) notFound();
 
   const revisions = await listRevisions(numId);
@@ -40,7 +40,9 @@ export default async function ContentItemPage({
           <p className="text-xs uppercase tracking-wide text-ink-subtle">
             {typeLabel[item.type]} · piste {item.trackKey}
           </p>
-          <h1 className="mt-1 text-xl font-medium text-ink">{item.subject}</h1>
+          <h1 className="mt-1 text-xl font-medium text-ink">
+            {item.finalSubject ?? item.subject}
+          </h1>
           <p className="mt-1 text-xs text-ink-muted">
             Prévu le {planned.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
           </p>
@@ -65,27 +67,14 @@ export default async function ContentItemPage({
 
       {item.draft ? (
         <>
-          <SectionTitle>Dernier draft</SectionTitle>
-          <Card>
-            <CardBody>
-              <p className="text-xs text-ink-subtle">
-                Modèle : <code className="rounded bg-surface-muted px-1.5 py-0.5">{item.generatedModel ?? "—"}</code>
-                {item.generatedAt ? ` · ${new Date(item.generatedAt).toLocaleString("fr-FR")}` : ""}
-              </p>
-              <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-surface-muted p-3 text-xs leading-relaxed text-ink">
-                {item.draft}
-              </pre>
-            </CardBody>
-          </Card>
-
-          <SectionTitle>Validation</SectionTitle>
-          <ValidateForm item={item} />
+          <SectionTitle>Édition + médias + publication</SectionTitle>
+          <ContentEditor item={item} />
         </>
       ) : null}
 
       {revisions.length > 1 ? (
         <>
-          <SectionTitle>Historique ({revisions.length} versions)</SectionTitle>
+          <SectionTitle>Historique des générations ({revisions.length})</SectionTitle>
           <Card>
             <CardBody>
               <ul className="space-y-2">
