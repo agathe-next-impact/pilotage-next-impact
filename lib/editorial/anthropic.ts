@@ -2,7 +2,7 @@
  * Wrapper Anthropic SDK — un seul point d'entrée pour appeler Claude.
  *
  * Modèles utilisés :
- *  - claude-opus-4-7  → génération haute qualité (newsletter, articles SEO)
+ *  - claude-opus-4-6  → génération haute qualité (newsletter, articles SEO)
  *  - claude-sonnet-4-6 → posts LinkedIn, ajustements rapides
  *
  * SERVER-ONLY.
@@ -12,8 +12,11 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
+// Modèles Anthropic publiquement disponibles via l'API.
+// claude-opus-4-7 est interne et non exposé : on utilise opus-4-6 (long format)
+// et sonnet-4-6 (rapide) — cohérence des deux.
 export const MODELS = {
-  opus: "claude-opus-4-7",
+  opus: "claude-opus-4-6",
   sonnet: "claude-sonnet-4-6",
 } as const;
 

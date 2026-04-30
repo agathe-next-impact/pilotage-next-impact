@@ -75,17 +75,11 @@ model ContentItem {
   trackKey       String
   plannedFor     DateTime
   status         String   @default("planned")
-  /// Sujet planifié (issu du brief)
   subject        String
-  /// Sujet final éditable par l'utilisatrice (après revue)
   finalSubject   String?
-  /// Brief court de référence
   brief          String
-  /// Dernier draft généré par Claude
   draft          String?
-  /// Version finale validée et prête à publier (markdown éditable)
   finalBody      String?
-  /// URL publique du post une fois publié (LinkedIn URL, lien Substack, URL article)
   publishedUrl   String?
   generatedModel String?
   generatedAt    DateTime?
@@ -116,16 +110,13 @@ model MediaAsset {
   id        Int         @id @default(autoincrement())
   contentId Int
   content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  /// "image" | "video" | "document"
   kind      String
-  /// URL Vercel Blob
   url       String
   filename  String
   size      Int
   mimeType  String
   alt       String?
   caption   String?
-  /// Ordre d'affichage dans la galerie
   position  Int         @default(0)
   createdAt DateTime    @default(now())
 
@@ -142,6 +133,38 @@ model PlanRevision {
   createdAt     DateTime  @default(now())
   appliedAt     DateTime?
   rejectedAt    DateTime?
+  /// Si la révision est déclenchée par un input chat utilisateur, on lie au contexte
+  contextId     Int?
+  context       PlanningContext? @relation(fields: [contextId], references: [id], onDelete: SetNull)
 
   @@index([scope, status])
+  @@index([contextId])
+}
+
+/**
+ * Facteurs contextuels qui impactent le planning hebdo.
+ * Saisis par l'utilisateur via chat ("j'ai un client tout la semaine prochaine"),
+ * ou détectés automatiquement (pic perf, KPI dérive, événement externe).
+ */
+model PlanningContext {
+  id            Int       @id @default(autoincrement())
+  /// Lundi de la semaine impactée (00:00 UTC). Null si impact global / multi-semaines.
+  weekStart     DateTime?
+  /// "user_chat" | "kpi_signal" | "external_event" | "perf_learning"
+  source        String
+  /// Texte libre saisi par l'utilisatrice (si source=user_chat)
+  rawInput      String?
+  /// Synthèse Claude du contexte
+  digest        String
+  /// Slugs ContentItem impactés (JSON array)
+  affectedSlugs String?
+  /// "pending" | "applied" | "ignored" | "stale"
+  status        String    @default("pending")
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  revisions PlanRevision[]
+
+  @@index([weekStart, status])
+  @@index([createdAt])
 }

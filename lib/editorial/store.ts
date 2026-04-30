@@ -59,6 +59,7 @@ interface DbPlanRevision {
   createdAt: Date;
   appliedAt: Date | null;
   rejectedAt: Date | null;
+  contextId: number | null;
 }
 
 interface DbMediaAsset {
@@ -145,6 +146,7 @@ function toPlanRevision(row: DbPlanRevision): PlanRevision {
     createdAt: row.createdAt.toISOString(),
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
     rejectedAt: row.rejectedAt ? row.rejectedAt.toISOString() : null,
+    contextId: row.contextId ?? null,
   };
 }
 
@@ -322,6 +324,10 @@ export async function rejectPlanRevision(id: number): Promise<PlanRevision> {
   const row = await prisma.planRevision.update({
     where: { id },
     data: { status: "rejected", rejectedAt: new Date() },
+  });
+  return toPlanRevision(row);
+}
+, rejectedAt: new Date() },
   });
   return toPlanRevision(row);
 }
