@@ -6,6 +6,8 @@ const tabs = [
   { href: "/pilotage", label: "Vue d'ensemble" },
   { href: "/pilotage/contenus", label: "Contenus" },
   { href: "/pilotage/contenus/planning", label: "Planning" },
+  { href: "/pilotage/contenus/voice", label: "Voix" },
+  { href: "/pilotage/contenus/prompts", label: "Prompts" },
   { href: "/pilotage/linkedin", label: "LinkedIn" },
   { href: "/pilotage/newsletter", label: "Newsletter" },
   { href: "/pilotage/seo-geo", label: "SEO + GEO" },

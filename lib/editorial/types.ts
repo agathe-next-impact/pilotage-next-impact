@@ -25,6 +25,22 @@ export type PlanningContextStatus = "pending" | "applied" | "ignored" | "stale";
 
 export type MediaKind = "image" | "video" | "document";
 
+export type WeeklyThemeSource =
+  | "indicative"
+  | "claude_suggestion"
+  | "user_edited"
+  | "applied";
+
+export type WeeklyThemeStatus = "draft" | "active" | "archived" | "rejected";
+
+export type HookPattern =
+  | "question"
+  | "stat"
+  | "contre-intuitif"
+  | "promesse"
+  | "histoire"
+  | "cta-direct";
+
 export interface MediaAsset {
   id: number;
   contentId: number;
@@ -36,6 +52,18 @@ export interface MediaAsset {
   alt: string | null;
   caption: string | null;
   position: number;
+  createdAt: string;
+}
+
+export interface HookSuggestion {
+  id: number;
+  contentId: number;
+  hook: string;
+  pattern: HookPattern;
+  position: number;
+  selected: boolean;
+  model: string | null;
+  userPrompt: string | null;
   createdAt: string;
 }
 
@@ -60,6 +88,7 @@ export interface ContentItem {
   createdAt: string;
   updatedAt: string;
   media?: MediaAsset[];
+  hooks?: HookSuggestion[];
 }
 
 export interface ContentRevision {
@@ -124,4 +153,21 @@ export interface PlanningContext {
   status: PlanningContextStatus;
   resolvedAt: string | null;
   createdAt: string;
+}
+
+export interface WeeklyTheme {
+  id: number;
+  weekStart: string;
+  theme: string;
+  summary: string;
+  primaryCampaign: string | null;
+  primaryCluster: string | null;
+  primaryPillar: string | null;
+  actionDirectives: string[];
+  source: WeeklyThemeSource;
+  status: WeeklyThemeStatus;
+  model: string | null;
+  rationale: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

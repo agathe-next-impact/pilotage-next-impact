@@ -7,7 +7,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/kpi/store";
-import { callClaude, MODELS } from "./anthropic";
+import { callClaudeJson, MODELS } from "./anthropic";
+import { EXTENDED_BRAND_BLOCK, getExtendedBrandBlock } from "./prompts";
 import { PLAN_REVISION_SCHEMA } from "./prompts";
 import { listContentItems } from "./store";
 import { listSnapshots } from "@/lib/kpi/store";
@@ -262,13 +263,15 @@ Renvoie TON ANALYSE et la PlanRevisionPayload.`;
   revision: ${PLAN_REVISION_SCHEMA.replace("interface PlanRevisionPayload", "")};
 }`;
 
-  const result = await callClaude({
-    model: MODELS.opus,
+  const result = await callClaudeJson({
+    model: MODELS.sonnet,
+    cachedSystem: await getExtendedBrandBlock(),
     system,
     user,
     jsonShape: responseSchema,
     maxTokens: 4_000,
     temperature: 0.3,
+    maxRetries: 2,
   });
 
   const json = result.json as {

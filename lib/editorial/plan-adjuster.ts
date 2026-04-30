@@ -6,7 +6,8 @@
 
 import "server-only";
 
-import { callClaude, MODELS } from "./anthropic";
+import { callClaudeJson, MODELS } from "./anthropic";
+import { EXTENDED_BRAND_BLOCK, getExtendedBrandBlock } from "./prompts";
 import { buildPlanAdjusterPrompt, PLAN_REVISION_SCHEMA } from "./prompts";
 import { createPlanRevision, listContentItems } from "./store";
 import type { PlanRevision, PlanRevisionPayload, PlanScope } from "./types";
@@ -132,13 +133,17 @@ export async function adjustPlanWithClaude(
     planSummary,
   });
 
-  const result = await callClaude({
+  // Plan-adjuster = décision stratégique → Opus + extended thinking
+  const result = await callClaudeJson({
     model: MODELS.opus,
+    cachedSystem: await getExtendedBrandBlock(),
     system,
     user,
     jsonShape: PLAN_REVISION_SCHEMA,
     maxTokens: 4_000,
     temperature: 0.3,
+    maxRetries: 2,
+    thinking: { budgetTokens: 5_000 },
   });
 
   const payload = result.json as PlanRevisionPayload | null;

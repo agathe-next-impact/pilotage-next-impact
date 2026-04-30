@@ -327,7 +327,3 @@ export async function rejectPlanRevision(id: number): Promise<PlanRevision> {
   });
   return toPlanRevision(row);
 }
-, rejectedAt: new Date() },
-  });
-  return toPlanRevision(row);
-}
