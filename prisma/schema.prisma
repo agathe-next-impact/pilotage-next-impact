@@ -260,4 +260,65 @@ model HookSuggestion {
   content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
   /// Texte du hook (1 phrase courte)
   hook      String
-  /// Pattern : "question" | "stat" | "contre-intuitif" | "promesse" 
+  /// Pattern : "question" | "stat" | "contre-intuitif" | "promesse" | "histoire" | "cta-direct"
+  pattern   String
+  position  Int         @default(0)
+  /// Marqué retenu par l'utilisatrice (au plus 1 par contentId)
+  selected  Boolean     @default(false)
+  /// Modèle Claude qui a généré ce hook
+  model     String?
+  /// Prompt utilisé (vide pour la 1ère génération)
+  userPrompt String?
+  createdAt DateTime    @default(now())
+
+  @@index([contentId, position])
+}
+
+/**
+ * Bibliothèque de prompts versionnés.
+ * Permet de modifier les prompts depuis l'admin sans redéployer,
+ * avec rollback et A/B testing entre versions.
+ */
+model PromptTemplate {
+  id           Int      @id @default(autoincrement())
+  /// "brand_block" | "linkedin_post" | "newsletter" | "seo_article" | "hooks" | "plan_adjuster" | "weekly_theme"
+  name         String
+  version      Int
+  /// Texte brut du template (peut contenir des placeholders {{var}})
+  body         String
+  /// Métadonnées libres (JSON) : auteur, notes, perf moyenne…
+  meta         String?
+  /// Une seule version active par name à la fois
+  isActive     Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([name, version])
+  @@index([name, isActive])
+}
+
+/**
+ * Patterns de voix extraits depuis les contenus publiés ou saisis manuellement.
+ * Utilisé par Claude pour s'aligner sur la voix réelle de l'auteure.
+ */
+model VoicePattern {
+  id          Int      @id @default(autoincrement())
+  /// "lexicon-loved" | "lexicon-banned" | "phrase-loved" | "phrase-banned" | "structure" | "winning-hook"
+  kind        String
+  text        String
+  /// "manual" | "extracted" | "winners"
+  source      String   @default("manual")
+  /// Confidence 0-1 (calculée pour patterns extraits, 1.0 pour manuels)
+  confidence  Float    @default(1.0)
+  /// Nombre d'apparitions dans le corpus publié
+  appearances Int      @default(1)
+  /// Pour pondérer dans les prompts (plus haut = plus important)
+  weight      Float    @default(1.0)
+  /// Si false, on n'inclut pas dans les prompts
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([kind, active])
+}
