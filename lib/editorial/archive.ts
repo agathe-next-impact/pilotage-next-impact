@@ -6,6 +6,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/kpi/store";
+import type { Prisma } from "@prisma/client";
 
 // =============================================================================
 // Archive de semaine (WeeklyTheme)
@@ -95,10 +96,19 @@ export async function listArchivedWeeks(): Promise<
   return result;
 }
 
+const ARCHIVED_ITEM_INCLUDE = {
+  hooks: { where: { selected: true }, take: 1 },
+  metrics: { orderBy: { recordedAt: "desc" as const }, take: 1 },
+} as const;
+
+export type ArchivedItem = Prisma.ContentItemGetPayload<{
+  include: typeof ARCHIVED_ITEM_INCLUDE;
+}>;
+
 export async function listArchivedItems(filter?: {
   source?: "platform" | "external";
   type?: string;
-}): Promise<Awaited<ReturnType<typeof prisma.contentItem.findMany>>> {
+}): Promise<ArchivedItem[]> {
   return prisma.contentItem.findMany({
     where: {
       archivedAt: { not: null },
@@ -106,10 +116,7 @@ export async function listArchivedItems(filter?: {
       ...(filter?.type ? { type: filter.type } : {}),
     },
     orderBy: { plannedFor: "desc" },
-    include: {
-      hooks: { where: { selected: true }, take: 1 },
-      metrics: { orderBy: { recordedAt: "desc" }, take: 1 },
-    },
+    include: ARCHIVED_ITEM_INCLUDE,
   });
 }
 
