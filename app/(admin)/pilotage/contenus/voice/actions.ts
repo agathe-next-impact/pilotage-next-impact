@@ -8,17 +8,7 @@ import {
   setPatternActive,
   deletePattern,
   extractFromPublishedContent,
-  type VoicePatternKind,
 } from "@/lib/editorial/voice-fingerprint";
-
-const KIND_VALUES: VoicePatternKind[] = [
-  "lexicon-loved",
-  "lexicon-banned",
-  "phrase-loved",
-  "phrase-banned",
-  "structure",
-  "winning-hook",
-];
 
 const KindSchema = z.enum([
   "lexicon-loved",
@@ -92,4 +82,3 @@ export async function extractPatternsAction(): Promise<void> {
   revalidatePath("/pilotage/contenus/voice");
 }
 
-export const VOICE_KINDS = KIND_VALUES;

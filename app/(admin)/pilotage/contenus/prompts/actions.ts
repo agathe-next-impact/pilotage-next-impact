@@ -6,7 +6,6 @@ import { requireSession } from "@/lib/auth";
 import {
   createNewVersion,
   activateVersion,
-  type PromptName,
 } from "@/lib/editorial/prompt-store";
 
 const NameSchema = z.enum([
@@ -47,12 +46,3 @@ export async function activateVersionAction(formData: FormData): Promise<void> {
   revalidatePath("/pilotage/contenus/prompts");
 }
 
-export const PROMPT_NAMES: PromptName[] = [
-  "brand_block",
-  "linkedin_post_system",
-  "newsletter_system",
-  "seo_article_system",
-  "hooks_system",
-  "plan_adjuster_system",
-  "weekly_theme_system",
-];
