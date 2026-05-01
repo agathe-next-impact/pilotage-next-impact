@@ -102,12 +102,15 @@ export async function listThemes(filter?: {
   fromWeek?: Date;
   toWeek?: Date;
   status?: WeeklyThemeStatus;
+  /** Si true : inclut les thèmes archivés (par défaut on les exclut). */
+  includeArchived?: boolean;
 }): Promise<WeeklyTheme[]> {
   const rows = await prisma.weeklyTheme.findMany({
     where: {
       ...(filter?.fromWeek ? { weekStart: { gte: filter.fromWeek } } : {}),
       ...(filter?.toWeek ? { weekStart: { lte: filter.toWeek } } : {}),
       ...(filter?.status ? { status: filter.status } : {}),
+      ...(filter?.includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: [{ weekStart: "asc" }, { createdAt: "desc" }],
   });

@@ -2,6 +2,7 @@ import { CreateSlotButton, DeleteSlotButton } from "./SlotButtons";
 import { HookSuggestionsRow } from "./HookSuggestionsRow";
 import { WeeklyThemeBlock } from "./WeeklyThemeBlock";
 import { StatusBadge } from "./StatusBadge";
+import { archiveWeekAction } from "@/app/(admin)/pilotage/contenus/archive/actions";
 import Link from "next/link";
 import type {
   ContentItem,
@@ -128,6 +129,16 @@ export function WeeklyBlock({
             {seoItem ? " 1/1 " : " 0/1 "}Article
           </p>
         </div>
+        <form action={archiveWeekAction}>
+          <input type="hidden" name="weekStart" value={wsKey} />
+          <button
+            type="submit"
+            className="rounded-md border border-surface-muted px-2 py-1 text-[11px] text-ink-muted hover:bg-surface-muted hover:text-ink"
+            title="Archiver cette semaine et tous ses items"
+          >
+            Archiver →
+          </button>
+        </form>
       </header>
 
       <WeeklyThemeBlock active={theme} suggestions={themeSuggestions} />

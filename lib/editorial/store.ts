@@ -155,11 +155,14 @@ function toPlanRevision(row: DbPlanRevision): PlanRevision {
 export async function listContentItems(filter?: {
   type?: ContentType;
   status?: ContentStatus;
+  /** Si true : inclut les items archivés (par défaut on les exclut). */
+  includeArchived?: boolean;
 }): Promise<ContentItem[]> {
   const rows = await prisma.contentItem.findMany({
     where: {
       ...(filter?.type ? { type: filter.type } : {}),
       ...(filter?.status ? { status: filter.status } : {}),
+      ...(filter?.includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: { plannedFor: "asc" },
   });

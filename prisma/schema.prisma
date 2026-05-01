@@ -86,15 +86,22 @@ model ContentItem {
   validatedAt    DateTime?
   publishedAt    DateTime?
   meta           String?
+  /// "platform" : créé via l'app · "external" : importé manuellement (post LinkedIn perso, article invité…)
+  source         String   @default("platform")
+  /// Si non null : l'item est en archive lecture seule (n'apparaît plus dans le Planning).
+  archivedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   revisions ContentRevision[]
   media     MediaAsset[]
   hooks     HookSuggestion[]
+  metrics   ContentMetric[]
 
   @@index([type, plannedFor])
   @@index([status])
+  @@index([archivedAt])
+  @@index([source, type])
 }
 
 model ContentRevision {
@@ -186,10 +193,61 @@ model WeeklyTheme {
   model            String?
   /// Justification (chiffres KPI) si suggéré par Claude
   rationale        String?
+  /// Si non null : la semaine est archivée (n'apparaît plus dans le Planning).
+  archivedAt       DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   @@index([weekStart, status])
+  @@index([archivedAt])
+}
+
+/**
+ * Snapshot temporel des métriques d'un ContentItem.
+ * Plusieurs entrées par item (J+1, J+7, J+30…) pour suivre l'évolution.
+ */
+model ContentMetric {
+  id              Int         @id @default(autoincrement())
+  contentId       Int
+  content         ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  /// Date à laquelle ces chiffres ont été relevés
+  recordedAt      DateTime    @default(now())
+  /// Vues / impressions
+  impressions     Int?
+  /// Likes + comments + shares (ou opens NL, scrollDepth SEO)
+  engagementCount Int?
+  /// DM qualifiés, leads form., inscriptions NL, conversions GA4
+  conversions     Int?
+  /// Taux d'engagement calculé (engagement / impressions × 100)
+  engagementRate  Float?
+  /// Notes qualitatives libres : retours, échanges déclenchés, observations
+  notes           String?
+  /// Source du chiffre : "manual" | "linkedin_api" | "ga4" | "substack"
+  source          String      @default("manual")
+  createdAt       DateTime    @default(now())
+
+  @@index([contentId, recordedAt])
+}
+
+/**
+ * Synthèse mensuelle générée par Claude Opus.
+ * Une entrée par period (YYYY-MM).
+ * Lie performance des items publiés ce mois-là à des recommandations.
+ */
+model MonthlyAnalysis {
+  id          Int      @id @default(autoincrement())
+  /// Format YYYY-MM (ex: "2026-04")
+  period      String   @unique
+  /// Markdown libre généré par Claude (synthèse + recos)
+  body        String
+  /// Liste JSON des contentId analysés
+  itemsRefs   String?
+  /// Modèle Claude utilisé
+  model       String
+  /// Tokens consommés (debug)
+  inputTokens Int?
+  outputTokens Int?
+  createdAt   DateTime @default(now())
 }
 
 /**
@@ -202,65 +260,4 @@ model HookSuggestion {
   content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
   /// Texte du hook (1 phrase courte)
   hook      String
-  /// Pattern : "question" | "stat" | "contre-intuitif" | "promesse" | "histoire" | "cta-direct"
-  pattern   String
-  position  Int         @default(0)
-  /// Marqué retenu par l'utilisatrice (au plus 1 par contentId)
-  selected  Boolean     @default(false)
-  /// Modèle Claude qui a généré ce hook
-  model     String?
-  /// Prompt utilisé (vide pour la 1ère génération)
-  userPrompt String?
-  createdAt DateTime    @default(now())
-
-  @@index([contentId, position])
-}
-
-/**
- * Bibliothèque de prompts versionnés.
- * Permet de modifier les prompts depuis l'admin sans redéployer,
- * avec rollback et A/B testing entre versions.
- */
-model PromptTemplate {
-  id           Int      @id @default(autoincrement())
-  /// "brand_block" | "linkedin_post" | "newsletter" | "seo_article" | "hooks" | "plan_adjuster" | "weekly_theme"
-  name         String
-  version      Int
-  /// Texte brut du template (peut contenir des placeholders {{var}})
-  body         String
-  /// Métadonnées libres (JSON) : auteur, notes, perf moyenne…
-  meta         String?
-  /// Une seule version active par name à la fois
-  isActive     Boolean  @default(false)
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([name, version])
-  @@index([name, isActive])
-}
-
-/**
- * Patterns de voix extraits depuis les contenus publiés ou saisis manuellement.
- * Utilisé par Claude pour s'aligner sur la voix réelle de l'auteure.
- */
-model VoicePattern {
-  id          Int      @id @default(autoincrement())
-  /// "lexicon-loved" | "lexicon-banned" | "phrase-loved" | "phrase-banned" | "structure" | "winning-hook"
-  kind        String
-  text        String
-  /// "manual" | "extracted" | "winners"
-  source      String   @default("manual")
-  /// Confidence 0-1 (calculée pour patterns extraits, 1.0 pour manuels)
-  confidence  Float    @default(1.0)
-  /// Nombre d'apparitions dans le corpus publié
-  appearances Int      @default(1)
-  /// Pour pondérer dans les prompts (plus haut = plus important)
-  weight      Float    @default(1.0)
-  /// Si false, on n'inclut pas dans les prompts
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([kind, active])
-}
+  /// Pattern : "question" | "stat" | "contre-intuitif" | "promesse" 
