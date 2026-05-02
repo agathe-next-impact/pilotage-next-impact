@@ -4,8 +4,7 @@ import {
   topPostsByEngagement,
   crossByTrackKey,
   crossByHookPattern,
-  getLatestMetric,
-  getMetricsHistory,
+  monthlyStats,
 } from "@/lib/editorial/metrics";
 import { listAnalyses } from "@/lib/editorial/analysis";
 import {
@@ -34,17 +33,18 @@ function typeLabel(t: string): string {
 }
 
 export default async function ArchivePage(): Promise<React.ReactElement> {
-  const [weeks, externals, top, byTrack, byPattern, analyses] = await Promise.all([
+  const period = currentPeriod();
+  const [weeks, externals, top, byTrack, byPattern, analyses, stats] = await Promise.all([
     listArchivedWeeks(),
     listArchivedItems({ source: "external" }),
     topPostsByEngagement(10),
     crossByTrackKey(),
     crossByHookPattern(),
     listAnalyses(),
+    monthlyStats(period),
   ]);
 
   const allArchived = await listArchivedItems();
-  const period = currentPeriod();
 
   return (
     <div className="space-y-10">
@@ -73,6 +73,39 @@ export default async function ArchivePage(): Promise<React.ReactElement> {
           </form>
         </div>
       </header>
+
+      {/* === BANDEAU STATS DU MOIS === */}
+      <section className="rounded-lg border border-accent/40 bg-accent/5 p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-ink">Mois en cours · {period}</h2>
+          <span className="text-xs text-ink-muted">
+            {stats.total.count} post(s) publié(s) · {stats.total.impressions.toLocaleString("fr-FR")} impr · {stats.total.engagement.toLocaleString("fr-FR")} eng · {stats.total.conversions} conv
+          </span>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {(["linkedin_post", "newsletter_edition", "seo_article"] as const).map((t) => {
+            const b = stats.byType[t];
+            const label = t === "linkedin_post" ? "LinkedIn" : t === "newsletter_edition" ? "Newsletter" : "SEO";
+            return (
+              <div key={t} className="rounded-md border border-surface-muted bg-surface px-3 py-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-medium text-ink">{label}</span>
+                  <span className="font-mono text-xs text-ink-muted">{b.count} post(s)</span>
+                </div>
+                <div className="mt-1 text-[11px] text-ink-muted">
+                  {b.impressions.toLocaleString("fr-FR")} impr · {b.engagement.toLocaleString("fr-FR")} eng
+                  {b.engagementRate !== null && (
+                    <span className="ml-1 font-medium text-accent">· {b.engagementRate.toFixed(1)}% taux</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[10px] text-ink-subtle">
+          Compteurs basés sur les ContentItem publiés via la plateforme. Les posts externes (LinkedIn perso, articles invités) ajoutés à l'archive sont inclus.
+        </p>
+      </section>
 
       {/* === SYNTHÈSES MENSUELLES === */}
       <section>

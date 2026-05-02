@@ -14,6 +14,7 @@ import {
   crossByTrackKey,
   crossByHookPattern,
   topPostsByEngagement,
+  monthlyStats,
 } from "./metrics";
 
 export interface MonthlyAnalysis {
@@ -109,11 +110,12 @@ export async function generateMonthlyAnalysis(period: string): Promise<MonthlyAn
     throw new Error(`Aucun item publié sur la période ${period}.`);
   }
 
-  // 2. Tableaux de croisement sur la période
-  const [byTrack, byPattern, top] = await Promise.all([
+  // 2. Tableaux de croisement + stats mensuelles
+  const [byTrack, byPattern, top, stats] = await Promise.all([
     crossByTrackKey(undefined, start),
     crossByHookPattern(undefined, start),
     topPostsByEngagement(10, { since: start }),
+    monthlyStats(period),
   ]);
 
   // 3. Construit la trame textuelle envoyée à Claude
@@ -165,7 +167,16 @@ Règles :
 - Si les chiffres sont absents (n/a), dis-le explicitement et recommande de saisir les métriques.
 - Voix institutionnelle Next Impact (pas de "je"), didactique, sérieuse.`;
 
+  const statsBlock = `Volumes mensuels :
+- LinkedIn : ${stats.byType.linkedin_post.count} post(s) · ${stats.byType.linkedin_post.impressions.toLocaleString("fr-FR")} impr · ${stats.byType.linkedin_post.engagement} eng · taux moyen ${stats.byType.linkedin_post.engagementRate?.toFixed(2) ?? "n/a"}%
+- Newsletter : ${stats.byType.newsletter_edition.count} édition(s) · ${stats.byType.newsletter_edition.impressions.toLocaleString("fr-FR")} ouv/délivrés · ${stats.byType.newsletter_edition.engagement} clics · taux ${stats.byType.newsletter_edition.engagementRate?.toFixed(2) ?? "n/a"}%
+- SEO : ${stats.byType.seo_article.count} article(s) · ${stats.byType.seo_article.impressions.toLocaleString("fr-FR")} impr · ${stats.byType.seo_article.engagement} eng · taux ${stats.byType.seo_article.engagementRate?.toFixed(2) ?? "n/a"}%
+- Total : ${stats.total.count} post(s) · ${stats.total.impressions.toLocaleString("fr-FR")} impr · ${stats.total.engagement} eng · ${stats.total.conversions} conv`;
+
   const user = `# Période analysée : ${period}
+
+## Volumes du mois
+${statsBlock}
 
 ## Items publiés (${items.length})
 ${itemsBlock}

@@ -432,3 +432,12 @@ Génère ${proposalsPerWeek} propositions de thèmes pour chacune des ${input.we
 export function describePeriod(): string {
   return `Période courante : ${fmtPeriodLong(currentPeriod())}`;
 }
+ out.set(ws.toISOString(), created);
+  }
+
+  return out;
+}
+
+export function describePeriod(): string {
+  return `Période courante : ${fmtPeriodLong(currentPeriod())}`;
+}

@@ -283,3 +283,91 @@ export async function crossByHookPattern(
 
   return [...map.values()].sort((a, b) => (b.avgEngagementRate ?? 0) - (a.avgEngagementRate ?? 0));
 }
+
+// =============================================================================
+// Stats mensuelles consolidées
+// =============================================================================
+
+export interface MonthlyStats {
+  period: string;            // "YYYY-MM"
+  start: string;             // ISO
+  end: string;               // ISO
+  byType: {
+    linkedin_post: { count: number; impressions: number; engagement: number; conversions: number; engagementRate: number | null };
+    newsletter_edition: { count: number; impressions: number; engagement: number; conversions: number; engagementRate: number | null };
+    seo_article: { count: number; impressions: number; engagement: number; conversions: number; engagementRate: number | null };
+  };
+  total: {
+    count: number;
+    impressions: number;
+    engagement: number;
+    conversions: number;
+  };
+}
+
+/**
+ * Agrège tous les ContentItem publiés sur la période YYYY-MM (UTC).
+ * Pour chaque type : compteur + somme des dernières métriques + taux pondéré.
+ */
+export async function monthlyStats(period: string): Promise<MonthlyStats> {
+  const m = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!m) throw new Error(`Format period invalide : "${period}". Attendu YYYY-MM.`);
+  const year = parseInt(m[1] ?? "0", 10);
+  const month = parseInt(m[2] ?? "0", 10);
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 1));
+
+  const items = await prisma.contentItem.findMany({
+    where: {
+      status: "published",
+      publishedAt: { gte: start, lt: end },
+    },
+    include: {
+      metrics: { orderBy: { recordedAt: "desc" }, take: 1 },
+    },
+  });
+
+  const buckets = {
+    linkedin_post:      { count: 0, impressions: 0, engagement: 0, conversions: 0 },
+    newsletter_edition: { count: 0, impressions: 0, engagement: 0, conversions: 0 },
+    seo_article:        { count: 0, impressions: 0, engagement: 0, conversions: 0 },
+  };
+
+  for (const it of items) {
+    const k = it.type as keyof typeof buckets;
+    if (!buckets[k]) continue;
+    buckets[k].count++;
+    const lastMetric = (it as { metrics?: { impressions: number | null; engagementCount: number | null; conversions: number | null }[] }).metrics?.[0];
+    if (lastMetric) {
+      buckets[k].impressions += lastMetric.impressions ?? 0;
+      buckets[k].engagement += lastMetric.engagementCount ?? 0;
+      buckets[k].conversions += lastMetric.conversions ?? 0;
+    }
+  }
+
+  function withRate(b: { count: number; impressions: number; engagement: number; conversions: number }) {
+    return {
+      ...b,
+      engagementRate: b.impressions > 0 ? (b.engagement / b.impressions) * 100 : null,
+    };
+  }
+
+  const total = {
+    count: buckets.linkedin_post.count + buckets.newsletter_edition.count + buckets.seo_article.count,
+    impressions: buckets.linkedin_post.impressions + buckets.newsletter_edition.impressions + buckets.seo_article.impressions,
+    engagement: buckets.linkedin_post.engagement + buckets.newsletter_edition.engagement + buckets.seo_article.engagement,
+    conversions: buckets.linkedin_post.conversions + buckets.newsletter_edition.conversions + buckets.seo_article.conversions,
+  };
+
+  return {
+    period,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    byType: {
+      linkedin_post: withRate(buckets.linkedin_post),
+      newsletter_edition: withRate(buckets.newsletter_edition),
+      seo_article: withRate(buckets.seo_article),
+    },
+    total,
+  };
+}
