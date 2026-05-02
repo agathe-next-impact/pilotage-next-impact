@@ -1,13 +1,14 @@
 /**
- * Import des exports LinkedIn et CSV/XLSX de métriques :
- *  - Shares.csv (export "Get a copy of your data" : posts perso, sans métriques)
- *  - Articles.csv (idem : articles long format, sans métriques)
- *  - Page Analytics export (xlsx LinkedIn page company : Post URL + métriques)
+ * Import des exports LinkedIn et Substack (CSV/XLSX) :
+ *  - LinkedIn Shares.csv (export "Get a copy of your data" : posts perso, sans métriques)
+ *  - LinkedIn Articles.csv (idem : articles long format, sans métriques)
+ *  - LinkedIn Page Analytics export (xlsx page company : URL + métriques)
+ *  - Substack Posts CSV (Stats > Posts > Export : web_url, post_date, email_sends, email_opens, email_clicks, etc.)
  *  - CSV/XLSX custom utilisateur (recommandé pour le profil perso) :
  *    colonnes flexibles : url, date, impressions, reactions, comments, shares, conversions
  *
- * Strategy de matching : URL exacte d'abord, sinon ligne marquée 'no_match'
- * pour validation humaine côté UI.
+ * Détection automatique des colonnes par alias multiples (FR/EN, LinkedIn/Substack).
+ * Strategy de matching : URL exacte sur publishedUrl, sinon ligne en validation manuelle.
  *
  * SERVER-ONLY.
  */
@@ -21,7 +22,7 @@ import * as XLSX from "xlsx";
 // Types
 // =============================================================================
 
-export type ImportKind = "shares" | "articles" | "metrics";
+export type ImportKind = "shares" | "articles" | "metrics" | "substack";
 
 /**
  * Représentation unifiée d'une ligne parsée, qu'elle vienne d'un Shares.csv,
@@ -173,15 +174,51 @@ export async function readSheet(file: File): Promise<string[][]> {
 // Extraction unifiée selon les colonnes détectées
 // =============================================================================
 
-const URL_KEYS = ["url", "sharelink", "articlelink", "posturl", "articleurl", "permalink", "lien"];
-const DATE_KEYS = ["date", "publisheddate", "createddate", "createdat", "datepublished", "posteddate"];
-const TITLE_KEYS = ["title", "articletitle", "posttitle", "subject", "sujet", "titre"];
-const CONTENT_KEYS = ["sharecommentary", "content", "body", "description", "contenu", "texte"];
-const IMPRESSIONS_KEYS = ["impressions", "vues", "views", "vue", "viewcount"];
-const REACTIONS_KEYS = ["reactions", "likes", "réactions", "reactionscount", "likecount"];
-const COMMENTS_KEYS = ["comments", "commentaires", "commentcount"];
-const SHARES_KEYS = ["shares", "partages", "reposts", "sharescount", "repostcount"];
-const CONVERSIONS_KEYS = ["conversions", "clicks", "clics", "ctaclicks", "linkclicks"];
+const URL_KEYS = [
+  "url", "sharelink", "articlelink", "posturl", "articleurl", "permalink", "lien",
+  // Substack
+  "web_url", "weburl", "post_url",
+];
+const DATE_KEYS = [
+  "date", "publisheddate", "createddate", "createdat", "datepublished", "posteddate",
+  // Substack
+  "post_date", "postdate", "send_date", "publishdate",
+];
+const TITLE_KEYS = [
+  "title", "articletitle", "posttitle", "subject", "sujet", "titre",
+  // Substack : title = sujet de la newsletter
+  "post_title",
+];
+const CONTENT_KEYS = [
+  "sharecommentary", "content", "body", "description", "contenu", "texte",
+  // Substack
+  "subtitle", "post_subtitle", "excerpt",
+];
+const IMPRESSIONS_KEYS = [
+  "impressions", "vues", "views", "vue", "viewcount",
+  // Substack : sends = nb de mails delivres = audience touchee
+  "email_sends", "emailsends", "sends", "delivered", "total_visitors", "totalvisitors",
+];
+const REACTIONS_KEYS = [
+  "reactions", "likes", "réactions", "reactionscount", "likecount",
+  // Substack : opens = engagement principal sur le canal email
+  "email_opens", "emailopens", "opens", "unique_opens",
+];
+const COMMENTS_KEYS = [
+  "comments", "commentaires", "commentcount",
+  // Substack
+  "comment_count",
+];
+const SHARES_KEYS = [
+  "shares", "partages", "reposts", "sharescount", "repostcount",
+  // Substack
+  "restacks", "restack_count",
+];
+const CONVERSIONS_KEYS = [
+  "conversions", "clicks", "clics", "ctaclicks", "linkclicks",
+  // Substack : clicks email = conversion vers le contenu
+  "email_clicks", "emailclicks", "unique_clicks",
+];
 
 function findCol(headers: Map<string, number>, candidates: string[]): number | undefined {
   for (const k of candidates) {
@@ -320,7 +357,12 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
     let targetItemId: number;
 
     if (decision === "create") {
-      const type = row.kind === "articles" ? "seo_article" : "linkedin_post";
+      const type =
+        row.kind === "articles"
+          ? "seo_article"
+          : row.kind === "substack"
+            ? "newsletter_edition"
+            : "linkedin_post";
       const subject = (row.title ?? "(post LinkedIn importé)").slice(0, 280) || "(post LinkedIn importé)";
       const slug = `ext-${date.toISOString().slice(0, 10)}-${slugify(subject)}`.slice(0, 80);
       const created = await prisma.contentItem.create({
@@ -333,7 +375,10 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
           status: "published",
           subject,
           finalSubject: subject,
-          brief: "(importé depuis l'export LinkedIn)",
+          brief:
+            row.kind === "substack"
+              ? "(importé depuis l'export Substack)"
+              : "(importé depuis l'export LinkedIn)",
           finalBody: row.contentPreview ?? null,
           publishedUrl: row.url,
           source: "external",
@@ -379,8 +424,11 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
           engagementCount: engagement || null,
           conversions: row.conversions ?? null,
           engagementRate: rate,
-          notes: `Import LinkedIn — ${row.reactions ?? 0} réactions / ${row.comments ?? 0} commentaires / ${row.shares ?? 0} partages`,
-          source: "linkedin_export",
+          notes:
+            row.kind === "substack"
+              ? `Import Substack — ${row.reactions ?? 0} ouvertures / ${row.comments ?? 0} commentaires / ${row.conversions ?? 0} clics`
+              : `Import LinkedIn — ${row.reactions ?? 0} réactions / ${row.comments ?? 0} commentaires / ${row.shares ?? 0} partages`,
+          source: row.kind === "substack" ? "substack_export" : "linkedin_export",
         },
       });
       result.metricsAdded++;

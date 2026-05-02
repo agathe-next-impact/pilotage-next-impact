@@ -5,8 +5,9 @@ import { parseImportAction, executeImportAction } from "./actions";
 import type { PreviewRow } from "@/lib/editorial/linkedin-import";
 
 const KIND_LABELS = {
-  shares: "Posts (Shares.csv ou export Page Analytics)",
-  articles: "Articles (Articles.csv)",
+  shares: "LinkedIn — Posts (Shares.csv ou Page Analytics)",
+  articles: "LinkedIn — Articles (Articles.csv)",
+  substack: "Substack — Newsletter (Posts CSV)",
   metrics: "Métriques custom (CSV/XLSX)",
 } as const;
 

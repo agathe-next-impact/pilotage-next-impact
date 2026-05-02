@@ -53,7 +53,21 @@ export default function ImportPage(): React.ReactElement {
           </div>
 
           <div>
-            <p className="font-medium text-ink">Option 3 — CSV/XLSX manuel (profil perso)</p>
+            <p className="font-medium text-ink">Option 3 — Export Substack (Newsletter)</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>Sur Substack → <em>Dashboard → Stats → Posts</em></li>
+              <li>Bouton <em>Export</em> en haut à droite (icône ⤓)</li>
+              <li>Substack t'envoie un .csv : <code>posts.csv</code> avec post_date, title, web_url, email_sends, email_opens, open_rate, email_clicks, click_rate</li>
+              <li>Charge ici en type <em>Substack — Newsletter</em></li>
+            </ol>
+            <p className="mt-1 text-[11px]">
+              ✅ Mapping automatique : <code>email_sends → impressions</code> (audience touchée), <code>email_opens → engagement</code>, <code>email_clicks → conversions</code>.
+              Le taux d'ouverture s'affiche directement dans la colonne Taux de l'archive.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-medium text-ink">Option 4 — CSV/XLSX manuel (profil perso)</p>
             <p className="mt-1">
               Le profil perso n'a pas d'export bulk de métriques. Le plus pratique : prépare toi-même un fichier avec ces colonnes (FR ou EN, , ou ; comme séparateur, .csv ou .xlsx) :
             </p>

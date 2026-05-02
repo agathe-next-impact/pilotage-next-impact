@@ -32,7 +32,7 @@ export async function parseImportAction(
   if (file.size > 10 * 1024 * 1024) {
     return { ok: false, message: "Fichier trop gros (>10 Mo)." };
   }
-  if (!["shares", "articles", "metrics"].includes(kind)) {
+  if (!["shares", "articles", "metrics", "substack"].includes(kind)) {
     return { ok: false, message: "Type d'import invalide." };
   }
 
