@@ -330,10 +330,4 @@ export async function rejectPlanRevision(id: number): Promise<PlanRevision> {
   });
   return toPlanRevision(row);
 }
-> {
-  const row = await prisma.planRevision.update({
-    where: { id },
-    data: { status: "rejected", rejectedAt: new Date() },
-  });
-  return toPlanRevision(row);
-}
+
