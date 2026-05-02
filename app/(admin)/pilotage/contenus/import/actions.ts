@@ -4,27 +4,19 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import {
-  parseSharesCsv,
-  parseArticlesCsv,
-  parseMetricsCsv,
-  buildSharesPreview,
-  buildArticlesPreview,
-  buildMetricsPreview,
+  parseAndPreview,
   executeImport,
   type PreviewRow,
+  type ImportKind,
 } from "@/lib/editorial/linkedin-import";
 
 interface ParseState {
   ok: boolean;
   message?: string;
   rows?: PreviewRow[];
-  kind?: "shares" | "articles" | "metrics";
+  kind?: ImportKind;
 }
 
-/**
- * Parse l'export uploadé et renvoie les PreviewRow (matchage URL effectué).
- * Utilisé via useActionState côté client.
- */
 export async function parseImportAction(
   _prev: ParseState,
   formData: FormData
@@ -37,39 +29,34 @@ export async function parseImportAction(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, message: "Aucun fichier fourni." };
   }
-  if (file.size > 5 * 1024 * 1024) {
-    return { ok: false, message: "Fichier trop gros (>5 Mo)." };
+  if (file.size > 10 * 1024 * 1024) {
+    return { ok: false, message: "Fichier trop gros (>10 Mo)." };
   }
   if (!["shares", "articles", "metrics"].includes(kind)) {
     return { ok: false, message: "Type d'import invalide." };
   }
 
-  const text = await file.text();
   let rows: PreviewRow[];
   try {
-    if (kind === "shares") {
-      const parsed = parseSharesCsv(text);
-      rows = await buildSharesPreview(parsed);
-    } else if (kind === "articles") {
-      const parsed = parseArticlesCsv(text);
-      rows = await buildArticlesPreview(parsed);
-    } else {
-      const parsed = parseMetricsCsv(text);
-      rows = await buildMetricsPreview(parsed);
-    }
+    rows = await parseAndPreview(file, kind as ImportKind);
   } catch (err) {
     return { ok: false, message: `Erreur de parsing : ${(err as Error).message}` };
   }
 
   if (rows.length === 0) {
-    return { ok: false, message: "Aucune ligne valide trouvée. Vérifie l'en-tête du fichier." };
+    return {
+      ok: false,
+      message:
+        "Aucune ligne valide trouvée. Vérifie l'en-tête du fichier (colonne URL obligatoire : url, sharelink, articlelink…).",
+    };
   }
 
+  const withMetrics = rows.filter((r) => r.hasMetrics).length;
   return {
     ok: true,
     rows,
-    kind: kind as "shares" | "articles" | "metrics",
-    message: `${rows.length} ligne(s) parsée(s).`,
+    kind: kind as ImportKind,
+    message: `${rows.length} ligne(s) parsée(s)${withMetrics > 0 ? ` · ${withMetrics} avec métriques` : ""}.`,
   };
 }
 

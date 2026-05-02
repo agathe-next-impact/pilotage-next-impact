@@ -5,9 +5,9 @@ import { parseImportAction, executeImportAction } from "./actions";
 import type { PreviewRow } from "@/lib/editorial/linkedin-import";
 
 const KIND_LABELS = {
-  shares: "Posts (Shares.csv)",
+  shares: "Posts (Shares.csv ou export Page Analytics)",
   articles: "Articles (Articles.csv)",
-  metrics: "Métriques (CSV custom)",
+  metrics: "Métriques custom (CSV/XLSX)",
 } as const;
 
 export function ImportClient(): React.ReactElement {
@@ -23,18 +23,21 @@ export function ImportClient(): React.ReactElement {
 
   function decisionFor(row: PreviewRow): string {
     if (decisions[row.index] !== undefined) return decisions[row.index] as string;
-    // défaut : update si match, sinon create
     return row.matchedItemId ? `update:${row.matchedItemId}` : "create";
+  }
+
+  function fmtNum(n: number | undefined): string {
+    if (n === undefined) return "—";
+    return n.toLocaleString("fr-FR");
   }
 
   return (
     <div className="space-y-8">
-      {/* === ZONE UPLOAD === */}
       <section className="rounded-lg border border-surface-muted bg-surface p-4">
         <h2 className="text-sm font-medium text-ink">1. Charger un export</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          Trois formats acceptés. Pour les exports LinkedIn perso : <em>Settings → Get a copy of your data</em>, puis envoyer Shares.csv ou Articles.csv une fois reçus.
-          Pour les métriques : un CSV simple avec colonnes <code>url, impressions, reactions, comments, shares, conversions</code> (séparateur , ou ;).
+          Formats acceptés : .csv, .xlsx, .xls. Détection automatique des colonnes par leur nom (FR ou EN).
+          Si le fichier contient impressions/réactions/commentaires/partages, ils seront enregistrés comme métriques avec la date du post comme <code>recordedAt</code>.
         </p>
         <form action={parseAction} className="mt-3 flex flex-wrap items-center gap-2">
           <select
@@ -50,7 +53,7 @@ export function ImportClient(): React.ReactElement {
           <input
             name="file"
             type="file"
-            accept=".csv,.txt"
+            accept=".csv,.txt,.xlsx,.xls"
             required
             className="text-xs"
           />
@@ -69,7 +72,6 @@ export function ImportClient(): React.ReactElement {
         )}
       </section>
 
-      {/* === ZONE PRÉVISUALISATION === */}
       {rows.length > 0 && (
         <section className="rounded-lg border border-surface-muted bg-surface p-4">
           <div className="flex items-baseline justify-between">
@@ -78,11 +80,13 @@ export function ImportClient(): React.ReactElement {
                 2. Valider les correspondances ({rows.length} ligne·s)
               </h2>
               <p className="mt-1 text-xs text-ink-muted">
-                Vert = match URL trouvé, mise à jour de l'item existant. Sinon création en archive externe (modifiable ligne par ligne).
+                Vert = match URL trouvé (mise à jour de l'item). Sinon création en archive externe.
+                Bleu = la ligne porte des métriques qui seront enregistrées.
               </p>
             </div>
-            <div className="text-xs text-ink-muted">
-              {rows.filter((r) => r.matchedItemId).length} match(s) auto sur {rows.length}
+            <div className="text-right text-xs text-ink-muted">
+              <div>{rows.filter((r) => r.matchedItemId).length} match(s) auto</div>
+              <div>{rows.filter((r) => r.hasMetrics).length} avec métriques</div>
             </div>
           </div>
 
@@ -93,6 +97,10 @@ export function ImportClient(): React.ReactElement {
                   <th className="px-2 py-2 text-left">#</th>
                   <th className="px-2 py-2 text-left">Date</th>
                   <th className="px-2 py-2 text-left">Aperçu</th>
+                  <th className="px-2 py-2 text-right">Impr.</th>
+                  <th className="px-2 py-2 text-right">React.</th>
+                  <th className="px-2 py-2 text-right">Comm.</th>
+                  <th className="px-2 py-2 text-right">Part.</th>
                   <th className="px-2 py-2 text-left">URL</th>
                   <th className="px-2 py-2 text-left">Match</th>
                   <th className="px-2 py-2 text-left">Décision</th>
@@ -101,27 +109,33 @@ export function ImportClient(): React.ReactElement {
               <tbody>
                 {rows.map((row) => {
                   const isMatched = !!row.matchedItemId;
+                  const rowClass = isMatched
+                    ? "bg-emerald-50/30"
+                    : row.hasMetrics
+                      ? "bg-blue-50/30"
+                      : "";
                   return (
-                    <tr
-                      key={row.index}
-                      className={`border-t border-surface-muted/50 ${isMatched ? "bg-emerald-50/30" : ""}`}
-                    >
+                    <tr key={row.index} className={`border-t border-surface-muted/50 ${rowClass}`}>
                       <td className="px-2 py-1.5 text-ink-subtle">{row.index}</td>
                       <td className="px-2 py-1.5 whitespace-nowrap text-ink-muted">
-                        {row.date ? new Date(row.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}
+                        {row.dateIso ? new Date(row.dateIso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}
                       </td>
-                      <td className="max-w-[280px] truncate px-2 py-1.5 text-ink" title={row.contentPreview ?? ""}>
-                        {row.title ?? "—"}
+                      <td className="max-w-[260px] truncate px-2 py-1.5 text-ink" title={row.contentPreview ?? ""}>
+                        {row.title}
                       </td>
-                      <td className="max-w-[180px] truncate px-2 py-1.5 text-ink-muted">
+                      <td className="px-2 py-1.5 text-right text-ink-muted">{fmtNum(row.impressions)}</td>
+                      <td className="px-2 py-1.5 text-right text-ink-muted">{fmtNum(row.reactions)}</td>
+                      <td className="px-2 py-1.5 text-right text-ink-muted">{fmtNum(row.comments)}</td>
+                      <td className="px-2 py-1.5 text-right text-ink-muted">{fmtNum(row.shares)}</td>
+                      <td className="max-w-[160px] truncate px-2 py-1.5 text-ink-muted">
                         <a href={row.url} target="_blank" rel="noreferrer" className="hover:underline">
-                          {row.url.replace(/^https?:\/\//, "").slice(0, 40)}…
+                          {row.url.replace(/^https?:\/\//, "").slice(0, 32)}…
                         </a>
                       </td>
                       <td className="px-2 py-1.5">
                         {row.matchedItemId ? (
                           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                            #{row.matchedItemId} {row.matchedItemSubject?.slice(0, 30)}
+                            #{row.matchedItemId}
                           </span>
                         ) : (
                           <span className="text-ink-subtle">aucun</span>
@@ -161,7 +175,6 @@ export function ImportClient(): React.ReactElement {
         </section>
       )}
 
-      {/* === RÉSULTAT === */}
       {execState.message && (
         <section
           className={`rounded-lg border p-4 ${

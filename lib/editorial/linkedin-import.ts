@@ -1,9 +1,10 @@
 /**
- * Import des exports LinkedIn (Get a copy of your data) :
- *  - Shares.csv  → posts standards
- *  - Articles.csv → articles long format
- *
- * Et import optionnel d'un CSV de métriques (saisi manuellement par l'utilisatrice).
+ * Import des exports LinkedIn et CSV/XLSX de métriques :
+ *  - Shares.csv (export "Get a copy of your data" : posts perso, sans métriques)
+ *  - Articles.csv (idem : articles long format, sans métriques)
+ *  - Page Analytics export (xlsx LinkedIn page company : Post URL + métriques)
+ *  - CSV/XLSX custom utilisateur (recommandé pour le profil perso) :
+ *    colonnes flexibles : url, date, impressions, reactions, comments, shares, conversions
  *
  * Strategy de matching : URL exacte d'abord, sinon ligne marquée 'no_match'
  * pour validation humaine côté UI.
@@ -14,6 +15,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/kpi/store";
+import * as XLSX from "xlsx";
 
 // =============================================================================
 // Types
@@ -21,23 +23,20 @@ import { prisma } from "@/lib/kpi/store";
 
 export type ImportKind = "shares" | "articles" | "metrics";
 
-export interface ParsedShare {
-  date: Date;
+/**
+ * Représentation unifiée d'une ligne parsée, qu'elle vienne d'un Shares.csv,
+ * d'un Articles.csv ou d'un export de métriques. Tous les champs métriques
+ * sont optionnels — seuls url et date sont systématiquement présents.
+ */
+export interface ParsedRow {
+  /** URL du post (publishedUrl). */
   url: string;
-  content: string;
-  mediaType?: string | null;
-  visibility?: string | null;
-}
-
-export interface ParsedArticle {
+  /** Date de publication (ISO). Sert aussi de recordedAt pour les métriques. */
   date: Date;
-  url: string;
+  /** Pour les posts : contenu / extrait. Pour les articles : titre. */
   title: string;
-  description?: string | null;
-}
-
-export interface ParsedMetric {
-  url: string;
+  contentPreview?: string;
+  /** Métriques optionnelles. */
   impressions?: number;
   reactions?: number;
   comments?: number;
@@ -45,26 +44,24 @@ export interface ParsedMetric {
   conversions?: number;
 }
 
-export interface PreviewRow {
-  /** Index original dans le CSV (1-based, sans header) */
+export interface PreviewRow extends ParsedRow {
+  /** Index original (1-based) pour le mapping decisions. */
   index: number;
-  kind: "share" | "article" | "metric";
-  date?: string;          // ISO ou ""
-  url: string;
-  title?: string;         // pour partage : extrait du content (60 chars)
-  contentPreview?: string;
-  /** ID du ContentItem matché par URL, ou null */
+  kind: ImportKind;
+  /** ID du ContentItem matché par URL exacte, ou null. */
   matchedItemId: number | null;
   matchedItemSubject?: string | null;
-  /** Métriques saisies (uniquement pour kind=metric) */
-  metric?: ParsedMetric;
+  /** Date au format ISO string (sérialisable pour le client). */
+  dateIso: string;
+  /** True si la ligne contient au moins une métrique numérique. */
+  hasMetrics: boolean;
 }
 
 // =============================================================================
 // Parser CSV minimal (RFC 4180)
 // =============================================================================
 
-function parseCsv(text: string): string[][] {
+function parseCsvText(text: string): string[][] {
   const rows: string[][] = [];
   let cur: string[] = [];
   let cell = "";
@@ -72,7 +69,6 @@ function parseCsv(text: string): string[][] {
 
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-
     if (inQuotes) {
       if (c === '"') {
         if (text[i + 1] === '"') {
@@ -85,29 +81,17 @@ function parseCsv(text: string): string[][] {
         cell += c;
       }
     } else {
-      if (c === '"') {
-        inQuotes = true;
-      } else if (c === ",") {
-        cur.push(cell);
-        cell = "";
-      } else if (c === "\n") {
-        cur.push(cell);
-        rows.push(cur);
-        cur = [];
-        cell = "";
-      } else if (c === "\r") {
-        // skip CR (handled by LF)
-      } else {
-        cell += c;
-      }
+      if (c === '"') inQuotes = true;
+      else if (c === ",") { cur.push(cell); cell = ""; }
+      else if (c === "\n") { cur.push(cell); rows.push(cur); cur = []; cell = ""; }
+      else if (c === "\r") { /* skip */ }
+      else { cell += c; }
     }
   }
-  // Dernière cellule / ligne
   if (cell.length > 0 || cur.length > 0) {
     cur.push(cell);
     rows.push(cur);
   }
-  // Filtre les lignes 100% vides
   return rows.filter((r) => r.some((c) => c.trim().length > 0));
 }
 
@@ -115,126 +99,131 @@ function indexHeaders(headers: string[]): Map<string, number> {
   const m = new Map<string, number>();
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i];
-    if (typeof h === "string") m.set(h.trim().toLowerCase(), i);
+    if (typeof h === "string") {
+      const norm = h.trim().toLowerCase().replace(/\s+/g, "");
+      m.set(norm, i);
+    }
   }
   return m;
 }
 
-function safeDate(s: string | undefined): Date {
-  if (!s) return new Date();
-  // Format LinkedIn : "2024-10-01 14:32:11" ou ISO
-  const cleaned = s.replace(" ", "T") + (s.includes(":") ? "" : "T00:00:00");
-  const d = new Date(cleaned);
-  return isNaN(d.getTime()) ? new Date() : d;
+function safeDate(s: unknown): Date {
+  if (s instanceof Date) return s;
+  if (typeof s === "number") {
+    // Sérial Excel : nb de jours depuis 1900-01-00
+    const d = new Date((s - 25569) * 86400 * 1000);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  if (typeof s === "string" && s.length > 0) {
+    // Format "YYYY-MM-DD HH:MM:SS" ou ISO
+    const cleaned = s.includes("T") ? s : s.replace(" ", "T") + (s.includes(":") ? "" : "T00:00:00");
+    const d = new Date(cleaned);
+    if (!isNaN(d.getTime())) return d;
+    // Format "DD/MM/YYYY" français
+    const fr = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+    if (fr) {
+      const day = parseInt(fr[1] ?? "1", 10);
+      const month = parseInt(fr[2] ?? "1", 10);
+      const year = parseInt(fr[3] ?? "1970", 10);
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+  return new Date();
 }
 
-function safeInt(s: string | undefined): number | undefined {
+function safeInt(s: unknown): number | undefined {
   if (s === undefined || s === null || s === "") return undefined;
-  const cleaned = s.replace(/[^\d-]/g, "");
+  if (typeof s === "number") return Math.round(s);
+  const cleaned = String(s).replace(/[^\d-]/g, "");
   const n = parseInt(cleaned, 10);
   return isNaN(n) ? undefined : n;
 }
 
 // =============================================================================
-// Parsers spécifiques
+// Lecture du fichier (CSV ou XLSX) → matrice générique
 // =============================================================================
 
-/**
- * Parse Shares.csv (export LinkedIn perso).
- * Colonnes attendues : Date, ShareLink, ShareCommentary, SharedUrl, MediaUrl, MediaType, Visibility
- */
-export function parseSharesCsv(text: string): ParsedShare[] {
-  const rows = parseCsv(text);
-  if (rows.length < 2) return [];
-  const headers = indexHeaders(rows[0] ?? []);
-  const iDate = headers.get("date");
-  const iLink = headers.get("sharelink");
-  const iText = headers.get("sharecommentary");
-  const iMedia = headers.get("mediatype");
-  const iVis = headers.get("visibility");
-  if (iDate === undefined || iLink === undefined) return [];
-
-  const out: ParsedShare[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r] ?? [];
-    const url = (row[iLink] ?? "").trim();
-    if (!url) continue;
-    out.push({
-      date: safeDate(row[iDate]),
-      url,
-      content: ((iText !== undefined ? row[iText] : "") ?? "").trim(),
-      mediaType: iMedia !== undefined ? (row[iMedia] ?? null) : null,
-      visibility: iVis !== undefined ? (row[iVis] ?? null) : null,
+export async function readSheet(file: File): Promise<string[][]> {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    const firstName = wb.SheetNames[0];
+    if (!firstName) return [];
+    const sheet = wb.Sheets[firstName];
+    if (!sheet) return [];
+    // header: 1 → renvoie un tableau de tableaux
+    const data = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      raw: false,
+      dateNF: "yyyy-mm-dd",
     });
+    return data.map((row) => row.map((c) => (c === null || c === undefined ? "" : String(c))));
   }
-  return out;
-}
-
-/**
- * Parse Articles.csv (export LinkedIn perso).
- * Colonnes attendues : Date, ArticleLink, ArticleTitle, Topic, Description, ...
- */
-export function parseArticlesCsv(text: string): ParsedArticle[] {
-  const rows = parseCsv(text);
-  if (rows.length < 2) return [];
-  const headers = indexHeaders(rows[0] ?? []);
-  const iDate = headers.get("date") ?? headers.get("publisheddate");
-  const iLink = headers.get("articlelink") ?? headers.get("articleurl") ?? headers.get("url");
-  const iTitle = headers.get("articletitle") ?? headers.get("title");
-  const iDesc = headers.get("description");
-  if (iDate === undefined || iLink === undefined || iTitle === undefined) return [];
-
-  const out: ParsedArticle[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r] ?? [];
-    const url = (row[iLink] ?? "").trim();
-    if (!url) continue;
-    out.push({
-      date: safeDate(row[iDate]),
-      url,
-      title: ((row[iTitle] ?? "")).trim(),
-      description: iDesc !== undefined ? (row[iDesc] ?? null) : null,
-    });
-  }
-  return out;
-}
-
-/**
- * Parse un CSV de métriques utilisateur.
- * Format flexible : url, impressions, reactions, comments, shares, conversions.
- * Séparateur : virgule ou point-virgule.
- */
-export function parseMetricsCsv(text: string): ParsedMetric[] {
-  // Détection auto séparateur : si la 1ère ligne a plus de ; que de , on switch
+  // CSV / TXT : détection séparateur (, ou ;)
+  const text = await file.text();
   const firstLine = text.split("\n")[0] ?? "";
   const useSemi = (firstLine.split(";").length - 1) > (firstLine.split(",").length - 1);
   const normalized = useSemi ? text.replace(/;/g, ",") : text;
+  return parseCsvText(normalized);
+}
 
-  const rows = parseCsv(normalized);
-  if (rows.length < 2) return [];
-  const headers = indexHeaders(rows[0] ?? []);
-  const iUrl = headers.get("url") ?? headers.get("sharelink") ?? headers.get("articlelink");
-  const iImp = headers.get("impressions") ?? headers.get("vues") ?? headers.get("views");
-  const iReact = headers.get("reactions") ?? headers.get("likes") ?? headers.get("réactions");
-  const iComm = headers.get("comments") ?? headers.get("commentaires");
-  const iShare = headers.get("shares") ?? headers.get("partages") ?? headers.get("reposts");
-  const iConv = headers.get("conversions") ?? headers.get("clicks") ?? headers.get("clics");
+// =============================================================================
+// Extraction unifiée selon les colonnes détectées
+// =============================================================================
+
+const URL_KEYS = ["url", "sharelink", "articlelink", "posturl", "articleurl", "permalink", "lien"];
+const DATE_KEYS = ["date", "publisheddate", "createddate", "createdat", "datepublished", "posteddate"];
+const TITLE_KEYS = ["title", "articletitle", "posttitle", "subject", "sujet", "titre"];
+const CONTENT_KEYS = ["sharecommentary", "content", "body", "description", "contenu", "texte"];
+const IMPRESSIONS_KEYS = ["impressions", "vues", "views", "vue", "viewcount"];
+const REACTIONS_KEYS = ["reactions", "likes", "réactions", "reactionscount", "likecount"];
+const COMMENTS_KEYS = ["comments", "commentaires", "commentcount"];
+const SHARES_KEYS = ["shares", "partages", "reposts", "sharescount", "repostcount"];
+const CONVERSIONS_KEYS = ["conversions", "clicks", "clics", "ctaclicks", "linkclicks"];
+
+function findCol(headers: Map<string, number>, candidates: string[]): number | undefined {
+  for (const k of candidates) {
+    const i = headers.get(k);
+    if (i !== undefined) return i;
+  }
+  return undefined;
+}
+
+function extractRows(matrix: string[][]): ParsedRow[] {
+  if (matrix.length < 2) return [];
+  const headerRow = matrix[0] ?? [];
+  const headers = indexHeaders(headerRow);
+
+  const iUrl = findCol(headers, URL_KEYS);
   if (iUrl === undefined) return [];
+  const iDate = findCol(headers, DATE_KEYS);
+  const iTitle = findCol(headers, TITLE_KEYS);
+  const iContent = findCol(headers, CONTENT_KEYS);
+  const iImp = findCol(headers, IMPRESSIONS_KEYS);
+  const iReact = findCol(headers, REACTIONS_KEYS);
+  const iComm = findCol(headers, COMMENTS_KEYS);
+  const iShare = findCol(headers, SHARES_KEYS);
+  const iConv = findCol(headers, CONVERSIONS_KEYS);
 
-  const out: ParsedMetric[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r] ?? [];
+  const out: ParsedRow[] = [];
+  for (let r = 1; r < matrix.length; r++) {
+    const row = matrix[r] ?? [];
     const url = (row[iUrl] ?? "").trim();
     if (!url) continue;
-    const reactions = iReact !== undefined ? (safeInt(row[iReact]) ?? 0) : 0;
-    const comments = iComm !== undefined ? (safeInt(row[iComm]) ?? 0) : 0;
-    const shares = iShare !== undefined ? (safeInt(row[iShare]) ?? 0) : 0;
+    const titleRaw = iTitle !== undefined ? (row[iTitle] ?? "").trim() : "";
+    const contentRaw = iContent !== undefined ? (row[iContent] ?? "").trim() : "";
+    const title = titleRaw || contentRaw.slice(0, 80) || "(sans titre)";
     out.push({
       url,
+      date: iDate !== undefined ? safeDate(row[iDate]) : new Date(),
+      title,
+      contentPreview: contentRaw ? contentRaw.slice(0, 240) : undefined,
       impressions: iImp !== undefined ? safeInt(row[iImp]) : undefined,
-      reactions,
-      comments,
-      shares,
+      reactions: iReact !== undefined ? safeInt(row[iReact]) : undefined,
+      comments: iComm !== undefined ? safeInt(row[iComm]) : undefined,
+      shares: iShare !== undefined ? safeInt(row[iShare]) : undefined,
       conversions: iConv !== undefined ? safeInt(row[iConv]) : undefined,
     });
   }
@@ -242,7 +231,7 @@ export function parseMetricsCsv(text: string): ParsedMetric[] {
 }
 
 // =============================================================================
-// Matching avec ContentItem existants (par URL exacte)
+// Matching avec ContentItem existants
 // =============================================================================
 
 export async function findItemByUrl(url: string): Promise<{ id: number; subject: string } | null> {
@@ -255,66 +244,36 @@ export async function findItemByUrl(url: string): Promise<{ id: number; subject:
 }
 
 // =============================================================================
-// Préparation des PreviewRow (pour la page /import)
+// Pipeline parse → preview rows enrichies du matching
 // =============================================================================
 
-export async function buildSharesPreview(parsed: ParsedShare[]): Promise<PreviewRow[]> {
-  const rows: PreviewRow[] = [];
+export async function parseAndPreview(
+  file: File,
+  kind: ImportKind
+): Promise<PreviewRow[]> {
+  const matrix = await readSheet(file);
+  const parsed = extractRows(matrix);
+  const out: PreviewRow[] = [];
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i];
     if (!p) continue;
     const match = await findItemByUrl(p.url);
-    rows.push({
+    const hasMetrics =
+      p.impressions !== undefined ||
+      p.reactions !== undefined ||
+      p.comments !== undefined ||
+      p.shares !== undefined;
+    out.push({
+      ...p,
       index: i + 1,
-      kind: "share",
-      date: p.date.toISOString(),
-      url: p.url,
-      title: p.content.slice(0, 80),
-      contentPreview: p.content.slice(0, 200),
+      kind,
       matchedItemId: match?.id ?? null,
       matchedItemSubject: match?.subject ?? null,
+      dateIso: p.date.toISOString(),
+      hasMetrics,
     });
   }
-  return rows;
-}
-
-export async function buildArticlesPreview(parsed: ParsedArticle[]): Promise<PreviewRow[]> {
-  const rows: PreviewRow[] = [];
-  for (let i = 0; i < parsed.length; i++) {
-    const p = parsed[i];
-    if (!p) continue;
-    const match = await findItemByUrl(p.url);
-    rows.push({
-      index: i + 1,
-      kind: "article",
-      date: p.date.toISOString(),
-      url: p.url,
-      title: p.title,
-      contentPreview: p.description ?? "",
-      matchedItemId: match?.id ?? null,
-      matchedItemSubject: match?.subject ?? null,
-    });
-  }
-  return rows;
-}
-
-export async function buildMetricsPreview(parsed: ParsedMetric[]): Promise<PreviewRow[]> {
-  const rows: PreviewRow[] = [];
-  for (let i = 0; i < parsed.length; i++) {
-    const p = parsed[i];
-    if (!p) continue;
-    const match = await findItemByUrl(p.url);
-    rows.push({
-      index: i + 1,
-      kind: "metric",
-      url: p.url,
-      title: `${p.reactions ?? 0} réactions · ${p.comments ?? 0} commentaires · ${p.shares ?? 0} partages`,
-      matchedItemId: match?.id ?? null,
-      matchedItemSubject: match?.subject ?? null,
-      metric: p,
-    });
-  }
-  return rows;
+  return out;
 }
 
 // =============================================================================
@@ -323,7 +282,7 @@ export async function buildMetricsPreview(parsed: ParsedMetric[]): Promise<Previ
 
 interface ExecuteParams {
   rows: PreviewRow[];
-  /** Clé : index de la ligne. Valeur : "create" | "update:<itemId>" | "skip" */
+  /** Clé : index. Valeur : "create" | "update:<itemId>" | "skip" */
   decisions: Record<number, string>;
 }
 
@@ -348,20 +307,21 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
   const result: ExecuteResult = { itemsCreated: 0, itemsUpdated: 0, metricsAdded: 0, skipped: 0 };
 
   for (const row of params.rows) {
-    const decision = params.decisions[row.index] ?? (row.matchedItemId ? `update:${row.matchedItemId}` : "skip");
+    const decision =
+      params.decisions[row.index] ??
+      (row.matchedItemId ? `update:${row.matchedItemId}` : "create");
 
     if (decision === "skip") {
       result.skipped++;
       continue;
     }
 
+    const date = row.dateIso ? new Date(row.dateIso) : row.date;
     let targetItemId: number;
 
     if (decision === "create") {
-      // Création d'un ContentItem externe
-      const type = row.kind === "article" ? "seo_article" : "linkedin_post";
+      const type = row.kind === "articles" ? "seo_article" : "linkedin_post";
       const subject = (row.title ?? "(post LinkedIn importé)").slice(0, 280) || "(post LinkedIn importé)";
-      const date = row.date ? new Date(row.date) : new Date();
       const slug = `ext-${date.toISOString().slice(0, 10)}-${slugify(subject)}`.slice(0, 80);
       const created = await prisma.contentItem.create({
         data: {
@@ -389,10 +349,13 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
         result.skipped++;
         continue;
       }
-      // S'assurer que publishedUrl est rempli si pas déjà
+      // S'assurer que publishedUrl + publishedAt sont à jour
       await prisma.contentItem.update({
         where: { id },
-        data: { publishedUrl: row.url },
+        data: {
+          publishedUrl: row.url,
+          publishedAt: date,
+        },
       });
       targetItemId = id;
       result.itemsUpdated++;
@@ -401,22 +364,22 @@ export async function executeImport(params: ExecuteParams): Promise<ExecuteResul
       continue;
     }
 
-    // Si la ligne a des métriques, on les enregistre
-    if (row.metric) {
-      const m = row.metric;
-      const engagement = (m.reactions ?? 0) + (m.comments ?? 0) + (m.shares ?? 0);
+    // Si la ligne porte des métriques : on les enregistre, recordedAt = date du post
+    if (row.hasMetrics) {
+      const engagement = (row.reactions ?? 0) + (row.comments ?? 0) + (row.shares ?? 0);
       const rate =
-        m.impressions && m.impressions > 0
-          ? (engagement / m.impressions) * 100
+        row.impressions && row.impressions > 0
+          ? (engagement / row.impressions) * 100
           : null;
       await prisma.contentMetric.create({
         data: {
           contentId: targetItemId,
-          impressions: m.impressions ?? null,
+          recordedAt: date,
+          impressions: row.impressions ?? null,
           engagementCount: engagement || null,
-          conversions: m.conversions ?? null,
+          conversions: row.conversions ?? null,
           engagementRate: rate,
-          notes: `Import LinkedIn — ${m.reactions ?? 0} réactions / ${m.comments ?? 0} commentaires / ${m.shares ?? 0} partages`,
+          notes: `Import LinkedIn — ${row.reactions ?? 0} réactions / ${row.comments ?? 0} commentaires / ${row.shares ?? 0} partages`,
           source: "linkedin_export",
         },
       });
