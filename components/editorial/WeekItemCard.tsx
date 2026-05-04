@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { HookSuggestionsRow } from "./HookSuggestionsRow";
 import { StatusBadge } from "./StatusBadge";
+import { EditableField } from "./EditableField";
+import {
+  updateItemSubjectAction,
+  improveTextAction,
+} from "@/app/(admin)/pilotage/contenus/planning/actions";
 import type { ContentItem, HookSuggestion } from "@/lib/editorial/types";
 
 const TYPE_BADGE: Record<ContentItem["type"], { label: string; cls: string }> = {
@@ -35,12 +40,24 @@ export function WeekItemCard({
               {date.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" })}
             </span>
           </div>
-          <Link
-            href={{ pathname: `/pilotage/contenus/${item.id}` }}
-            className="mt-1 block text-sm font-medium text-ink hover:text-accent"
-          >
-            {displaySubject}
-          </Link>
+          <div className="mt-1 flex items-baseline gap-2">
+            <div className="flex-1 text-sm font-medium text-ink">
+              <EditableField
+                initialValue={displaySubject}
+                saveAction={updateItemSubjectAction}
+                improveAction={improveTextAction}
+                extraFields={{ id: item.id, type: "post_subject" }}
+                placeholder="Sujet du post"
+              />
+            </div>
+            <Link
+              href={{ pathname: `/pilotage/contenus/${item.id}` }}
+              className="shrink-0 text-[11px] text-ink-muted hover:text-accent"
+              title="Ouvrir l'éditeur complet"
+            >
+              ↗
+            </Link>
+          </div>
         </div>
         <StatusBadge status={item.status} />
       </div>

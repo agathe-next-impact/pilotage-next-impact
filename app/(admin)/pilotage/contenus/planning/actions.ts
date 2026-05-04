@@ -177,3 +177,132 @@ export async function deleteSlotAction(formData: FormData): Promise<void> {
   await deleteWeekSlot(id);
   revalidatePath("/pilotage/contenus", "layout");
 }
+
+// =============================================================================
+// Édition inline (Pattern A) — modifier directement les champs Claude
+// =============================================================================
+
+import { improveText, type ImproveFieldType } from "@/lib/editorial/improve";
+import { saveFinalContent, getContentItem } from "@/lib/editorial/store";
+import { prisma } from "@/lib/kpi/store";
+
+const ThemeFieldSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  field: z.enum(["theme", "summary"]),
+  value: z.string().min(1).max(2000),
+});
+
+export async function updateThemeFieldAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const parsed = ThemeFieldSchema.parse({
+    id: formData.get("id"),
+    field: formData.get("field"),
+    value: formData.get("value"),
+  });
+  const data: Record<string, string> = {
+    [parsed.field]: parsed.value,
+    source: "user_edited",
+  };
+  await prisma.weeklyTheme.update({ where: { id: parsed.id }, data });
+  revalidatePath("/pilotage/contenus/planning");
+}
+
+const ThemeDirectivesSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  /** Une directive par ligne dans la value envoyée. */
+  value: z.string().max(4000),
+});
+
+export async function updateThemeDirectivesAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const parsed = ThemeDirectivesSchema.parse({
+    id: formData.get("id"),
+    value: formData.get("value"),
+  });
+  const directives = parsed.value
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  await prisma.weeklyTheme.update({
+    where: { id: parsed.id },
+    data: {
+      actionDirectives: JSON.stringify(directives),
+      source: "user_edited",
+    },
+  });
+  revalidatePath("/pilotage/contenus/planning");
+}
+
+const ImproveSchema = z.object({
+  type: z.string(),
+  draft: z.string().min(2).max(4000),
+  context: z.string().max(2000).optional(),
+});
+
+export async function improveTextAction(
+  formData: FormData
+): Promise<{ ok: boolean; text?: string; message?: string }> {
+  await requireSession();
+  try {
+    const parsed = ImproveSchema.parse({
+      type: formData.get("type"),
+      draft: formData.get("draft"),
+      context: formData.get("context") ?? undefined,
+    });
+    const text = await improveText({
+      type: parsed.type as ImproveFieldType,
+      draft: parsed.draft,
+      context: parsed.context,
+    });
+    return { ok: true, text };
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
+}
+
+const ItemSubjectSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  value: z.string().min(1).max(300),
+});
+
+export async function updateItemSubjectAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const parsed = ItemSubjectSchema.parse({
+    id: formData.get("id"),
+    value: formData.get("value"),
+  });
+  const item = await getContentItem(parsed.id);
+  if (!item) throw new Error("Item introuvable");
+  await prisma.contentItem.update({
+    where: { id: parsed.id },
+    data: { subject: parsed.value },
+  });
+  // Si finalSubject existe (post déjà validé), on le met aussi à jour
+  if (item.finalSubject) {
+    await saveFinalContent({
+      id: parsed.id,
+      finalSubject: parsed.value,
+      finalBody: item.finalBody ?? "",
+    });
+  }
+  revalidatePath("/pilotage/contenus/planning");
+  revalidatePath(`/pilotage/contenus/${parsed.id}`);
+}
+
+const HookSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  value: z.string().min(1).max(500),
+});
+
+export async function updateHookAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const parsed = HookSchema.parse({
+    id: formData.get("id"),
+    value: formData.get("value"),
+  });
+  await prisma.hookSuggestion.update({
+    where: { id: parsed.id },
+    data: { hook: parsed.value },
+  });
+  revalidatePath("/pilotage/contenus/planning");
+}

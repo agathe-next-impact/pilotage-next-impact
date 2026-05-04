@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   generateHooksAction,
   selectHookAction,
+  updateHookAction,
+  improveTextAction,
 } from "@/app/(admin)/pilotage/contenus/planning/actions";
+import { EditableField } from "./EditableField";
 import type { HookSuggestion } from "@/lib/editorial/types";
 
 const PATTERN_LABEL: Record<HookSuggestion["pattern"], string> = {
@@ -152,7 +155,15 @@ export function HookSuggestionsRow({ contentId, hooks }: Props): React.ReactElem
                 >
                   {PATTERN_LABEL[h.pattern]}
                 </span>
-                <p className="flex-1 leading-relaxed text-ink">{h.hook}</p>
+                <div className="flex-1 leading-relaxed text-ink">
+                  <EditableField
+                    initialValue={h.hook}
+                    saveAction={updateHookAction}
+                    improveAction={improveTextAction}
+                    extraFields={{ id: h.id, type: "hook_linkedin" }}
+                    placeholder="(hook vide)"
+                  />
+                </div>
                 {!h.selected ? (
                   <button
                     type="button"

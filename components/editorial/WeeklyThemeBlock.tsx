@@ -1,7 +1,11 @@
 import {
   activateThemeAction,
   rejectThemeAction,
+  updateThemeFieldAction,
+  updateThemeDirectivesAction,
+  improveTextAction,
 } from "@/app/(admin)/pilotage/contenus/planning/actions";
+import { EditableField } from "./EditableField";
 import type { WeeklyTheme } from "@/lib/editorial/types";
 
 const SOURCE_LABEL: Record<WeeklyTheme["source"], string> = {
@@ -28,8 +32,26 @@ export function WeeklyThemeBlock({
               <p className="text-[10px] font-medium uppercase tracking-wider text-accent-dark">
                 Thème actif · {SOURCE_LABEL[active.source]}
               </p>
-              <h3 className="mt-1 text-sm font-medium text-ink">{active.theme}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-ink-muted">{active.summary}</p>
+              <div className="mt-1 text-sm font-medium text-ink">
+                <EditableField
+                  initialValue={active.theme}
+                  saveAction={updateThemeFieldAction}
+                  improveAction={improveTextAction}
+                  extraFields={{ id: active.id, field: "theme", type: "weekly_theme_title" }}
+                  placeholder="Titre du thème (8-12 mots)"
+                />
+              </div>
+              <div className="mt-1 text-xs leading-relaxed text-ink-muted">
+                <EditableField
+                  initialValue={active.summary}
+                  saveAction={updateThemeFieldAction}
+                  improveAction={improveTextAction}
+                  extraFields={{ id: active.id, field: "summary", type: "weekly_theme_summary" }}
+                  multiline
+                  rows={3}
+                  placeholder="Résumé en 2-3 phrases"
+                />
+              </div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
                 {active.primaryCampaign ? (
                   <span className="rounded bg-accent-light px-1.5 py-0.5 font-medium text-accent-dark">
@@ -47,16 +69,20 @@ export function WeeklyThemeBlock({
                   </span>
                 ) : null}
               </div>
-              {active.actionDirectives.length > 0 ? (
-                <ul className="mt-3 space-y-0.5 text-xs text-ink">
-                  {active.actionDirectives.map((d, i) => (
-                    <li key={i} className="flex gap-1.5">
-                      <span className="text-accent">→</span>
-                      <span>{d}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <div className="mt-3 text-xs text-ink">
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-ink-subtle">
+                  Directives d'action (1 par ligne)
+                </p>
+                <EditableField
+                  initialValue={active.actionDirectives.join("\n")}
+                  saveAction={updateThemeDirectivesAction}
+                  extraFields={{ id: active.id }}
+                  multiline
+                  rows={Math.max(2, active.actionDirectives.length + 1)}
+                  placeholder="Aucune directive — clique pour en ajouter"
+                  className="font-mono text-[11px]"
+                />
+              </div>
             </div>
           </div>
         </div>
