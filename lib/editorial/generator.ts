@@ -221,16 +221,53 @@ async function generateOnce(
   });
 
   const json = result.json;
-  if (!json || typeof json.body !== "string" || typeof json.subject !== "string") {
-    throw new Error(
-      `Claude n'a pas renvoyé un JSON valide après ${result.attempts} tentatives (modèle ${model}). Texte :\n${result.text.slice(0, 400)}`
-    );
+  let subject: string | null = null;
+  let body: string | null = null;
+  let selfReview = "";
+
+  if (json && typeof json.body === "string" && typeof json.subject === "string") {
+    subject = json.subject;
+    body = json.body;
+    selfReview = typeof json.selfReview === "string" ? json.selfReview : "";
+  } else {
+    // Fallback heuristique : Claude a répondu en texte libre malgré l'instruction JSON.
+    // On extrait : 1ère ligne non vide = subject, le reste = body.
+    const raw = (result.text ?? "").trim();
+    if (raw.length > 30) {
+      // Strip markdown code fences éventuels
+      const cleaned = raw.replace(/^```(?:json|markdown|md)?\s*/i, "").replace(/\s*```\s*$/i, "");
+      const lines = cleaned.split(/\r?\n/);
+      let firstNonEmpty = "";
+      let firstIdx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const ln = (lines[i] ?? "").trim();
+        if (ln.length > 0) {
+          firstNonEmpty = ln.replace(/^#+\s*/, "").replace(/^["«]+|["»]+$/g, "");
+          firstIdx = i;
+          break;
+        }
+      }
+      if (firstNonEmpty.length > 0) {
+        subject = firstNonEmpty.slice(0, 200);
+        body = lines.slice(firstIdx + 1).join("\n").trim() || cleaned;
+        selfReview = `[fallback] Claude a répondu en texte libre, parsing heuristique appliqué.`;
+        console.warn(
+          `[generateOnce] JSON invalide après ${result.attempts} tentatives (modèle ${model}). Fallback heuristique appliqué. Texte brut :\n${raw.slice(0, 200)}`
+        );
+      }
+    }
+
+    if (!subject || !body) {
+      throw new Error(
+        `Claude n'a pas renvoyé de contenu exploitable après ${result.attempts} tentatives (modèle ${model}). Réessaye avec un brief plus précis. Texte brut :\n${result.text.slice(0, 300)}`
+      );
+    }
   }
 
   return {
-    subject: json.subject,
-    body: json.body,
-    selfReview: typeof json.selfReview === "string" ? json.selfReview : "",
+    subject,
+    body,
+    selfReview,
     model,
     prompt: `${system}\n\n---\n\n${user}`,
     feedback,

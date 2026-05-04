@@ -34,8 +34,12 @@ export function GenerateForm({ item }: Props): React.ReactElement {
     setGenerating(true);
     setError(null);
     try {
-      await generateContentAction(formData);
-      router.refresh();
+      const res = await generateContentAction(formData);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(res.message ?? "Erreur de génération.");
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {

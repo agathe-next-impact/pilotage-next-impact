@@ -20,17 +20,25 @@ import type { PlanScope } from "@/lib/editorial/types";
 
 const IdSchema = z.object({ id: z.coerce.number().int().positive() });
 
-export async function generateContentAction(formData: FormData): Promise<void> {
-  await requireSession();
-  const { id } = IdSchema.parse({ id: formData.get("id") });
-  const feedback = String(formData.get("feedback") ?? "").trim() || undefined;
+export async function generateContentAction(
+  formData: FormData
+): Promise<{ ok: boolean; message?: string }> {
+  try {
+    await requireSession();
+    const { id } = IdSchema.parse({ id: formData.get("id") });
+    const feedback = String(formData.get("feedback") ?? "").trim() || undefined;
 
-  const item = await getContentItem(id);
-  if (!item) throw new Error("Item introuvable.");
+    const item = await getContentItem(id);
+    if (!item) return { ok: false, message: "Item introuvable." };
 
-  const draft = await generateDraft(item, { feedback });
-  await attachDraft(id, draft);
-  revalidatePath(`/pilotage/contenus`, "layout");
+    const draft = await generateDraft(item, { feedback });
+    await attachDraft(id, draft);
+    revalidatePath(`/pilotage/contenus`, "layout");
+    return { ok: true };
+  } catch (err) {
+    console.error("[generateContentAction]", err);
+    return { ok: false, message: (err as Error).message };
+  }
 }
 
 /**
