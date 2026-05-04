@@ -10,6 +10,7 @@ import {
   setPublishedUrlAction,
   deleteMediaAction,
 } from "@/app/(admin)/pilotage/contenus/actions";
+import { improveTextAction } from "@/app/(admin)/pilotage/contenus/planning/actions";
 
 interface Props {
   item: ContentItem;
@@ -31,6 +32,8 @@ export function ContentEditor({ item }: Props): React.ReactElement {
   );
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [improvingBody, setImprovingBody] = useState(false);
+  const [pendingImprovedBody, setPendingImprovedBody] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const isLinkedIn = item.type === "linkedin_post";
@@ -125,6 +128,49 @@ export function ContentEditor({ item }: Props): React.ReactElement {
     });
   }
 
+  async function handleImproveBody(): Promise<void> {
+    if (body.trim().length < 30) {
+      setError("Écris d'abord un corps de plus de 30 caractères à améliorer.");
+      return;
+    }
+    setError(null);
+    setImprovingBody(true);
+    try {
+      const fd = new FormData();
+      fd.set("draft", body);
+      fd.set(
+        "type",
+        item.type === "linkedin_post"
+          ? "post_body_linkedin"
+          : item.type === "newsletter_edition"
+            ? "post_body_newsletter"
+            : "post_body_seo"
+      );
+      fd.set("context", `Sujet : ${subject}\nBrief : ${item.brief}\nTrack : ${item.trackKey}`);
+      const res = await improveTextAction(fd);
+      if (res.ok && res.text) {
+        setPendingImprovedBody(res.text);
+      } else {
+        setError(res.message ?? "Échec de l'amélioration.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setImprovingBody(false);
+    }
+  }
+
+  function acceptImprovedBody(): void {
+    if (pendingImprovedBody !== null) {
+      setBody(pendingImprovedBody);
+      setPendingImprovedBody(null);
+    }
+  }
+
+  function rejectImprovedBody(): void {
+    setPendingImprovedBody(null);
+  }
+
   function handleDeleteMedia(mediaId: number): void {
     if (!confirm("Supprimer ce média ?")) return;
     const fd = new FormData();
@@ -159,25 +205,93 @@ export function ContentEditor({ item }: Props): React.ReactElement {
           className="mt-1 w-full rounded-md border border-surface-muted bg-surface px-3 py-2 text-base font-medium text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           placeholder={item.subject}
         />
-        {isNewsletter ? (
-          <p className="mt-1 text-xs text-ink-subtle">
-            {subject.length}/60 caractères
-            {subject.length > 60 ? " — trop long" : ""}
-          </p>
-        ) : null}
+        <div className="mt-1 flex items-center justify-between text-xs text-ink-subtle">
+          {isNewsletter ? (
+            <span className={subject.length > 60 ? "text-danger" : ""}>
+              {subject.length}/60 caractères{subject.length > 60 ? " — trop long" : ""}
+            </span>
+          ) : (
+            <span>&nbsp;</span>
+          )}
+          <button
+            type="button"
+            onClick={async () => {
+              if (subject.trim().length < 3) {
+                setError("Écris d'abord un sujet à améliorer.");
+                return;
+              }
+              setError(null);
+              const fd = new FormData();
+              fd.set("draft", subject);
+              fd.set(
+                "type",
+                isLinkedIn ? "hook_linkedin" : isNewsletter ? "hook_newsletter" : "hook_seo"
+              );
+              fd.set("context", `Brief : ${item.brief}\nTrack : ${item.trackKey}`);
+              try {
+                const res = await improveTextAction(fd);
+                if (res.ok && res.text) setSubject(res.text);
+                else setError(res.message ?? "Échec");
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+            className="rounded border border-accent/40 px-2 py-0.5 text-accent hover:bg-accent/10"
+            title="Polir avec Claude (garde l'intention, respecte la voix Next Impact)"
+          >
+            ↻ Améliorer avec Claude
+          </button>
+        </div>
       </div>
 
       {/* Body : split view ----------------------------------------- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-ink-subtle">
-            Édition (Markdown)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-medium uppercase tracking-wide text-ink-subtle">
+              Édition (Markdown)
+            </label>
+            <button
+              type="button"
+              onClick={handleImproveBody}
+              disabled={improvingBody || isPending || body.trim().length < 30}
+              className="rounded border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent/10 disabled:opacity-50"
+              title="Demande à Claude de polir tout le corps en gardant ton intention et ta structure"
+            >
+              {improvingBody ? "Claude polit…" : "↻ Polir avec Claude"}
+            </button>
+          </div>
+          {pendingImprovedBody !== null ? (
+            <div className="mt-2 rounded-md border-2 border-accent bg-accent/5 px-3 py-3">
+              <p className="text-[11px] font-medium text-accent">
+                Proposition de Claude — accepte pour remplacer ton corps actuel, ou refuse.
+              </p>
+              <pre className="mt-2 max-h-72 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
+                {pendingImprovedBody}
+              </pre>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={acceptImprovedBody}
+                  className="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                >
+                  Accepter cette version
+                </button>
+                <button
+                  type="button"
+                  onClick={rejectImprovedBody}
+                  className="rounded px-3 py-1 text-xs text-ink-muted hover:bg-surface-muted"
+                >
+                  Refuser
+                </button>
+              </div>
+            </div>
+          ) : null}
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={24}
-            className="mt-1 w-full rounded-md border border-surface-muted bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="mt-2 w-full rounded-md border border-surface-muted bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <div className="mt-1 flex items-center justify-between text-xs text-ink-subtle">
             <span>{charCount.toLocaleString("fr-FR")} caractères</span>

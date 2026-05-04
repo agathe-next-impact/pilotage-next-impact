@@ -16,7 +16,10 @@ export type ImproveFieldType =
   | "post_subject"
   | "hook_linkedin"
   | "hook_newsletter"
-  | "hook_seo";
+  | "hook_seo"
+  | "post_body_linkedin"
+  | "post_body_newsletter"
+  | "post_body_seo";
 
 interface ImproveOptions {
   /** Type de champ → contraintes de format */
@@ -55,6 +58,18 @@ const FIELD_INSTRUCTIONS: Record<ImproveFieldType, { name: string; rules: string
   hook_seo: {
     name: "Titre H1 article SEO",
     rules: "≤70 caractères. Intègre le mot-clé naturellement. Pas de marketing creux.",
+  },
+  post_body_linkedin: {
+    name: "Corps de post LinkedIn (markdown)",
+    rules: "Entre 1100 et 1500 caractères au total. Structure : hook (1ère ligne) + 2-4 paragraphes courts + CTA final. Sans emoji. Sans superlatif creux. Conserve les sauts de ligne et la structure markdown du brouillon.",
+  },
+  post_body_newsletter: {
+    name: "Corps d'édition newsletter (markdown)",
+    rules: "Entre 800 et 2500 mots. Plusieurs sections (titres en H2/H3 markdown). Cite des chiffres et faits. CTA en fin de chaque section principale vers next-impact.digital. Conserve la structure markdown du brouillon.",
+  },
+  post_body_seo: {
+    name: "Corps d'article SEO (markdown)",
+    rules: "Entre 1500 et 3000 mots. Structure H1/H2/H3 hiérarchisée. Maillage interne explicite (next-impact.digital). Format scannable (listes à puces, tableaux). Conserve la structure markdown du brouillon.",
   },
 };
 
