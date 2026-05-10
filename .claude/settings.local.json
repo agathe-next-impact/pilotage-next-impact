@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(openssl rand *)"
+      "Bash(openssl rand *)",
+      "Bash(git -C nextjs status)"
     ]
   }
 }
