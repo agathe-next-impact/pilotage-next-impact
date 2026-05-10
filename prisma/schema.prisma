@@ -103,3 +103,15 @@ model SeoGeoAction {
 
   @@index([weekReportId])
 }
+
+/// Synthèse mensuelle générée par Claude — 1 par period (YYYY-MM).
+model MonthlyAnalysis {
+  id        Int      @id @default(autoincrement())
+  /// Format YYYY-MM (ex: "2026-04")
+  period    String   @unique
+  /// Markdown libre (synthèse + recommandations)
+  body      String
+  model     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

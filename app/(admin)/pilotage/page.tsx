@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { listRecentReports, weekStartOf, fmtWeekKey } from "@/lib/reports";
+import { topPosts } from "@/lib/analytics";
+import { TopPosts } from "@/components/dashboard/TopPosts";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,10 @@ function fmtNum(n: number | null | undefined): string {
 }
 
 export default async function PilotageHome(): Promise<React.ReactElement> {
-  const reports = await listRecentReports(8);
+  const [reports, top] = await Promise.all([
+    listRecentReports(8),
+    topPosts(3),
+  ]);
   const currentWeekKey = fmtWeekKey(weekStartOf(new Date()));
   const hasCurrent = reports.some((r) => fmtWeekKey(new Date(r.weekStart)) === currentWeekKey);
 
@@ -40,6 +45,15 @@ export default async function PilotageHome(): Promise<React.ReactElement> {
           </Link>
         )}
       </header>
+
+      {top.length > 0 && (
+        <section>
+          <h2 className="text-lg font-medium text-ink">Top 3 posts par engagement</h2>
+          <div className="mt-3">
+            <TopPosts posts={top} />
+          </div>
+        </section>
+      )}
 
       {reports.length === 0 ? (
         <div className="rounded-lg border border-surface-muted bg-surface p-8 text-center">

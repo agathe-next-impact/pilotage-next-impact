@@ -19,6 +19,9 @@ export default async function PilotageLayout({
           <Link href="/pilotage" className="text-sm font-medium text-ink">
             <span className="inline-block h-2 w-2 rounded-full bg-accent align-middle" aria-hidden /> Pilotage <span className="font-normal text-ink-muted">— Next Impact Digital</span>
           </Link>
+          <Link href="/pilotage/analyses" className="text-xs text-ink-muted hover:text-ink">
+            Analyses
+          </Link>
           <form action="/api/auth/logout" method="POST">
             <button type="submit" className="text-xs text-ink-muted hover:text-ink">
               Se déconnecter
