@@ -47,3 +47,4 @@ prisma/migrations/dev.db
 next-env.d.ts
 
 .vercel
+nextjs/
