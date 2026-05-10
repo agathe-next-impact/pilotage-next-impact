@@ -1,0 +1,50 @@
+# Pilotage Next Impact — Variables d'environnement Vercel
+# À importer via : Vercel → Project → Settings → Environment Variables → Import .env
+# Cocher Production + Preview + Development
+
+# ── Auth admin ─────────────────────────────────────────────────────────
+ADMIN_EMAIL="agathe.karinthi.martin@gmail.com"
+ADMIN_PASSWORD="acuFuxhFWd2tu5Jwmd5AmgD4"
+SESSION_PASSWORD="VQADmLMljE7xqbK37BHwQyyziUS4ZisKEd0RUVnpDIm-HinbwnBuSdGVIrgQljjn"
+
+# ── Cron Vercel ────────────────────────────────────────────────────────
+CRON_SECRET="f5bc617d457ed6b89f542f13b446b8c508c5a615fde95543abfb9740e72051d7"
+
+# ── Site cible (utilisé par audit GEO + GSC) ───────────────────────────
+TARGET_DOMAIN="next-impact.digital"
+TARGET_BRAND_TERMS="next impact,karinthi"
+GSC_SITE_URL="sc-domain:next-impact.digital"
+
+# ── Optimisations Next.js ──────────────────────────────────────────────
+NEXT_TELEMETRY_DISABLED="1"
+
+# ── À COMPLÉTER PAR TOI ────────────────────────────────────────────────
+
+# Clé Anthropic (nécessaire pour /pilotage/contenus)
+# Obtenir : https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=""
+
+# Service account Google Cloud (nécessaire pour cron sync-gsc et sync-ga4)
+# 1. Créer un service account : https://console.cloud.google.com/iam-admin/serviceaccounts
+# 2. Télécharger la clé JSON, copier client_email et private_key ci-dessous
+# 3. Donner accès "Lecteur" sur la propriété GSC et GA4
+GSC_CLIENT_EMAIL=""
+GSC_PRIVATE_KEY=""
+
+# ID de la propriété GA4 (Google Analytics → Admin → Property settings)
+GA4_PROPERTY_ID=""
+
+# ── OPTIONNEL ──────────────────────────────────────────────────────────
+
+# Audit GEO via OpenAI (sinon désactivé)
+OPENAI_API_KEY=""
+
+# Audit GEO via Perplexity (sinon désactivé)
+PERPLEXITY_API_KEY=""
+
+# ── INJECTÉ AUTOMATIQUEMENT PAR VERCEL POSTGRES ────────────────────────
+# Ne pas remplir manuellement. Une fois la DB créée :
+#   Vercel → Project → Storage → Create → Postgres (Neon Free)
+# Vercel injecte alors : DATABASE_URL, POSTGRES_URL, POSTGRES_PRISMA_URL,
+# POSTGRES_URL_NON_POOLING, POSTGRES_USER, POSTGRES_HOST, POSTGRES_PASSWORD,
+# POSTGRES_DATABASE
