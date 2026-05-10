@@ -1,4 +1,5 @@
-// Schéma Prisma — Pilotage Next Impact
+// Schéma Prisma — Suivi de performances marketing Next Impact
+// Saisie hebdomadaire : KPIs + posts LinkedIn + newsletter + actions SEO/GEO.
 
 generator client {
   provider = "prisma-client-js"
@@ -7,54 +8,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-model Snapshot {
-  id        Int      @id @default(autoincrement())
-  period    String   @unique
-  source    String   @default("manual")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  linkedinFollowers       Int?
-  linkedinImpressions     Int?
-  linkedinEngagementRate  Float?
-  linkedinDmsQualified    Int?
-  linkedinFormLeads       Int?
-  linkedinPostsPublished  Int?
-
-  nlSubscribers      Int?
-  nlOpenRate         Float?
-  nlCtrResource      Float?
-  nlUnsubscribeRate  Float?
-  nlLeadsMentioning  Int?
-  nlEditionNumber    Int?
-
-  seoClicks        Int?
-  seoImpressions   Int?
-  seoPagesIndexed  Int?
-  seoPagesTop10    Int?
-  seoAvgPosition   Float?
-
-  geoShareOfVoice    Float?
-  geoCitationsCount  Int?
-  geoReferralTraffic Int?
-
-  ga4Sessions     Int?
-  ga4Users        Int?
-  ga4Conversions  Int?
-
-  geoAuditRuns GeoAuditRun[]
-}
-
-model GeoAuditRun {
-  id       Int      @id @default(autoincrement())
-  snapshot Snapshot @relation(fields: [period], references: [period], onDelete: Cascade)
-  period   String
-  ranAt    DateTime @default(now())
-  payload  String
-
-  @@index([period])
 }
 
 model LoginAttempt {
@@ -68,257 +21,85 @@ model LoginAttempt {
   @@index([email, createdAt])
 }
 
-model ContentItem {
-  id             Int      @id @default(autoincrement())
-  slug           String   @unique
-  type           String
-  trackKey       String
-  plannedFor     DateTime
-  status         String   @default("planned")
-  subject        String
-  finalSubject   String?
-  brief          String
-  draft          String?
-  finalBody      String?
-  publishedUrl   String?
-  generatedModel String?
-  generatedAt    DateTime?
-  validatedAt    DateTime?
-  publishedAt    DateTime?
-  meta           String?
-  /// "platform" : créé via l'app · "external" : importé manuellement (post LinkedIn perso, article invité…)
-  source         String   @default("platform")
-  /// Si non null : l'item est en archive lecture seule (n'apparaît plus dans le Planning).
-  archivedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  revisions ContentRevision[]
-  media     MediaAsset[]
-  hooks     HookSuggestion[]
-  metrics   ContentMetric[]
-
-  @@index([type, plannedFor])
-  @@index([status])
-  @@index([archivedAt])
-  @@index([source, type])
-}
-
-model ContentRevision {
-  id        Int         @id @default(autoincrement())
-  contentId Int
-  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  payload   String
-  createdAt DateTime    @default(now())
-
-  @@index([contentId, createdAt])
-}
-
-model MediaAsset {
-  id        Int         @id @default(autoincrement())
-  contentId Int
-  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  kind      String
-  url       String
-  filename  String
-  size      Int
-  mimeType  String
-  alt       String?
-  caption   String?
-  position  Int         @default(0)
-  createdAt DateTime    @default(now())
-
-  @@index([contentId, position])
-}
-
-model PlanRevision {
-  id            Int       @id @default(autoincrement())
-  scope         String
-  status        String    @default("pending")
-  basedOnPeriod String
-  payload       String
-  model         String
-  createdAt     DateTime  @default(now())
-  appliedAt     DateTime?
-  rejectedAt    DateTime?
-  contextId     Int?
-  context       PlanningContext? @relation(fields: [contextId], references: [id], onDelete: SetNull)
-
-  @@index([scope, status])
-  @@index([contextId])
-}
-
-model PlanningContext {
-  id            Int       @id @default(autoincrement())
-  weekStart     DateTime?
-  source        String
-  rawInput      String?
-  digest        String
-  affectedSlugs String?
-  status        String    @default("pending")
-  resolvedAt    DateTime?
-  createdAt     DateTime  @default(now())
-
-  revisions PlanRevision[]
-
-  @@index([weekStart, status])
-  @@index([createdAt])
-}
-
-/**
- * Thématique de campagne hebdomadaire.
- * Une semaine a 1 thème actif + N suggestions Claude en attente.
- */
-model WeeklyTheme {
-  id               Int      @id @default(autoincrement())
+/// Une semaine de suivi marketing — un seul rapport par lundi.
+model WeekReport {
+  id        Int      @id @default(autoincrement())
   /// Lundi 00:00 UTC de la semaine
-  weekStart        DateTime
-  /// Titre court (ex: "OETH & ROI : convaincre les DAF")
-  theme            String
-  /// Synthèse 2-3 phrases de l'angle stratégique
-  summary          String
-  /// Campagne LinkedIn dominante (A-F) ou null
-  primaryCampaign  String?
-  /// Cluster SEO dominant (A-WP / B-TIH / C-ROI) ou null
-  primaryCluster   String?
-  /// Pilier newsletter (W/A/H/R/C) ou null
-  primaryPillar    String?
-  /// JSON array de directives d'action courtes
-  actionDirectives String?
-  /// "indicative" (trame initiale) | "claude_suggestion" | "user_edited" | "applied"
-  source           String   @default("indicative")
-  /// "draft" | "active" | "archived" | "rejected"
-  status           String   @default("draft")
-  /// Modèle Claude utilisé si génération IA
-  model            String?
-  /// Justification (chiffres KPI) si suggéré par Claude
-  rationale        String?
-  /// Si non null : la semaine est archivée (n'apparaît plus dans le Planning).
-  archivedAt       DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  weekStart DateTime @unique
+  /// Synthèse libre / observations sur la semaine
+  notes     String?
 
-  @@index([weekStart, status])
-  @@index([archivedAt])
+  // KPIs globaux fin de semaine ----------
+  linkedinFollowers      Int?
+  newsletterSubscribers  Int?
+  seoClicks              Int?
+  seoImpressions         Int?
+  geoShareOfVoice        Float?
+
+  posts        WeekPost[]
+  newsletter   WeekNewsletter?
+  seoGeoActions SeoGeoAction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-/**
- * Snapshot temporel des métriques d'un ContentItem.
- * Plusieurs entrées par item (J+1, J+7, J+30…) pour suivre l'évolution.
- */
-model ContentMetric {
-  id              Int         @id @default(autoincrement())
-  contentId       Int
-  content         ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  /// Date à laquelle ces chiffres ont été relevés
-  recordedAt      DateTime    @default(now())
-  /// Vues / impressions
-  impressions     Int?
-  /// Likes + comments + shares (ou opens NL, scrollDepth SEO)
-  engagementCount Int?
-  /// DM qualifiés, leads form., inscriptions NL, conversions GA4
-  conversions     Int?
-  /// Taux d'engagement calculé (engagement / impressions × 100)
-  engagementRate  Float?
-  /// Notes qualitatives libres : retours, échanges déclenchés, observations
-  notes           String?
-  /// Source du chiffre : "manual" | "linkedin_api" | "ga4" | "substack"
-  source          String      @default("manual")
-  createdAt       DateTime    @default(now())
+/// 0..N posts LinkedIn par semaine.
+model WeekPost {
+  id           Int        @id @default(autoincrement())
+  weekReportId Int
+  weekReport   WeekReport @relation(fields: [weekReportId], references: [id], onDelete: Cascade)
 
-  @@index([contentId, recordedAt])
+  publishedAt  DateTime
+  subject      String
+  content      String     // markdown libre
+  url          String?    // URL post-publication LinkedIn
+
+  // Métriques saisies manuellement après publication
+  impressions  Int?
+  reactions    Int?
+  comments     Int?
+  shares       Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([weekReportId])
 }
 
-/**
- * Synthèse mensuelle générée par Claude Opus.
- * Une entrée par period (YYYY-MM).
- * Lie performance des items publiés ce mois-là à des recommandations.
- */
-model MonthlyAnalysis {
-  id          Int      @id @default(autoincrement())
-  /// Format YYYY-MM (ex: "2026-04")
-  period      String   @unique
-  /// Markdown libre généré par Claude (synthèse + recos)
-  body        String
-  /// Liste JSON des contentId analysés
-  itemsRefs   String?
-  /// Modèle Claude utilisé
-  model       String
-  /// Tokens consommés (debug)
-  inputTokens Int?
-  outputTokens Int?
-  createdAt   DateTime @default(now())
+/// 0 ou 1 édition newsletter par semaine.
+model WeekNewsletter {
+  id           Int        @id @default(autoincrement())
+  weekReportId Int        @unique
+  weekReport   WeekReport @relation(fields: [weekReportId], references: [id], onDelete: Cascade)
+
+  publishedAt  DateTime
+  subject      String
+  content      String     // markdown libre
+  url          String?    // URL Substack
+
+  // Métriques
+  emailSends   Int?
+  emailOpens   Int?
+  emailClicks  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-/**
- * 3 suggestions de hook (1ère ligne) par ContentItem.
- * Régénérables sur prompt utilisateur.
- */
-model HookSuggestion {
-  id        Int         @id @default(autoincrement())
-  contentId Int
-  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  /// Texte du hook (1 phrase courte)
-  hook      String
-  /// Pattern : "question" | "stat" | "contre-intuitif" | "promesse" | "histoire" | "cta-direct"
-  pattern   String
-  position  Int         @default(0)
-  /// Marqué retenu par l'utilisatrice (au plus 1 par contentId)
-  selected  Boolean     @default(false)
-  /// Modèle Claude qui a généré ce hook
-  model     String?
-  /// Prompt utilisé (vide pour la 1ère génération)
-  userPrompt String?
-  createdAt DateTime    @default(now())
+/// 0..N actions SEO ou GEO par semaine (audit, page, backlink, citation IA…).
+model SeoGeoAction {
+  id           Int        @id @default(autoincrement())
+  weekReportId Int
+  weekReport   WeekReport @relation(fields: [weekReportId], references: [id], onDelete: Cascade)
 
-  @@index([contentId, position])
-}
+  /// "seo-page" | "seo-backlink" | "seo-audit" | "geo-citation" | "geo-prompt" | "autre"
+  type         String
+  description  String     // texte libre, ce qui a été fait
+  result       String?    // texte libre, résultat / suite
 
-/**
- * Bibliothèque de prompts versionnés.
- * Permet de modifier les prompts depuis l'admin sans redéployer,
- * avec rollback et A/B testing entre versions.
- */
-model PromptTemplate {
-  id           Int      @id @default(autoincrement())
-  /// "brand_block" | "linkedin_post" | "newsletter" | "seo_article" | "hooks" | "plan_adjuster" | "weekly_theme"
-  name         String
-  version      Int
-  /// Texte brut du template (peut contenir des placeholders {{var}})
-  body         String
-  /// Métadonnées libres (JSON) : auteur, notes, perf moyenne…
-  meta         String?
-  /// Une seule version active par name à la fois
-  isActive     Boolean  @default(false)
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([name, version])
-  @@index([name, isActive])
-}
-
-/**
- * Patterns de voix extraits depuis les contenus publiés ou saisis manuellement.
- * Utilisé par Claude pour s'aligner sur la voix réelle de l'auteure.
- */
-model VoicePattern {
-  id          Int      @id @default(autoincrement())
-  /// "lexicon-loved" | "lexicon-banned" | "phrase-loved" | "phrase-banned" | "structure" | "winning-hook"
-  kind        String
-  text        String
-  /// "manual" | "extracted" | "winners"
-  source      String   @default("manual")
-  /// Confidence 0-1 (calculée pour patterns extraits, 1.0 pour manuels)
-  confidence  Float    @default(1.0)
-  /// Nombre d'apparitions dans le corpus publié
-  appearances Int      @default(1)
-  /// Pour pondérer dans les prompts (plus haut = plus important)
-  weight      Float    @default(1.0)
-  /// Si false, on n'inclut pas dans les prompts
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([kind, active])
+  @@index([weekReportId])
 }

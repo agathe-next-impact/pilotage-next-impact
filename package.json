@@ -1,8 +1,8 @@
 {
   "name": "pilotage-next-impact",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Tableau de bord standalone — pilotage de la communication digitale Next Impact (LinkedIn, Newsletter, SEO, GEO).",
+  "description": "Suivi hebdomadaire des performances marketing Next Impact (LinkedIn, Newsletter, SEO/GEO).",
   "engines": {
     "node": ">=20"
   },
@@ -12,9 +12,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
@@ -22,20 +20,12 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@google-analytics/data": "^4.12.0",
     "@prisma/client": "^6.0.0",
-    "googleapis": "^144.0.0",
     "iron-session": "^8.0.4",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.13.0",
-    "zod": "^3.23.8",
-    "@anthropic-ai/sdk": "^0.30.0",
-    "@vercel/blob": "^0.27.0",
-    "react-markdown": "^9.0.1",
-    "remark-gfm": "^4.0.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
@@ -47,7 +37,4 @@
     "postcss": "^8.4.49",
     "prisma": "^6.0.0",
     "tailwindcss": "^3.4.15",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
-  }
-}
+    "tsx": "^4.1

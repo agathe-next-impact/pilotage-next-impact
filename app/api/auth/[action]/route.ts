@@ -7,7 +7,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getSession, verifyCredentials } from "@/lib/auth";
-import { recentFailedAttempts, recordLoginAttempt } from "@/lib/kpi/store";
+import { recentFailedAttempts, recordLoginAttempt } from "@/lib/db";
 
 const LoginSchema = z.object({
   email: z.string().email(),

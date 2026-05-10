@@ -1,147 +1,122 @@
-import { listSnapshots } from "@/lib/kpi/store";
-import { summarize, projectToTarget, buildSeries } from "@/lib/kpi/aggregate";
-import {
-  LINKEDIN_TARGETS,
-  NEWSLETTER_TARGETS,
-  SEO_TARGETS,
-  GEO_TARGETS,
-} from "@/lib/kpi/targets";
-import { Card, CardBody, SectionTitle } from "@/components/ui/Card";
-import { ChannelGrid } from "@/components/pilotage/ChannelGrid";
-import { ProgressionChart } from "@/components/pilotage/ProgressionChart";
-import { ObjectiveProgress } from "@/components/pilotage/ObjectiveProgress";
-import { fmtNumber, fmtPercent, fmtPeriodLong } from "@/lib/format";
-import type { Snapshot } from "@/lib/kpi/types";
+import Link from "next/link";
+import { listRecentReports, weekStartOf, fmtWeekKey } from "@/lib/reports";
 
 export const dynamic = "force-dynamic";
 
-export default async function PilotageOverview(): Promise<React.ReactElement> {
-  const snapshots = await listSnapshots();
-  const last: Snapshot | undefined = snapshots[snapshots.length - 1];
-  const asOf = new Date();
+function fmtWeekLabel(iso: string): string {
+  const d = new Date(iso);
+  const end = new Date(d);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const fmt = (x: Date) =>
+    x.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  return `Semaine du ${fmt(d)} au ${fmt(end)}`;
+}
 
-  if (!last) {
-    return (
-      <div className="rounded-lg border border-dashed border-surface-muted bg-surface p-8 text-center">
-        <p className="text-sm text-ink-muted">
-          Aucune donnée encore. Lance <code className="rounded bg-surface-muted px-1.5 py-0.5">pnpm db:seed</code> ou
-          saisis le premier snapshot.
-        </p>
-      </div>
-    );
-  }
+function fmtNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  return n.toLocaleString("fr-FR");
+}
 
-  const summaries = summarize(last, asOf);
-
-  // Projections sept. 2026
-  const liProjection = projectToTarget(snapshots, (s) => s.linkedin.followers, LINKEDIN_TARGETS.followers);
-  const nlProjection = projectToTarget(snapshots, (s) => s.newsletter.subscribers, NEWSLETTER_TARGETS.subscribers);
-  const seoProjection = projectToTarget(snapshots, (s) => s.seo.clicks, SEO_TARGETS.clicks);
-  const geoProjection = projectToTarget(snapshots, (s) => s.geo.shareOfVoice, GEO_TARGETS.shareOfVoice);
-
-  // Séries pour le graphique principal (LI + NL)
-  const liSeries = buildSeries(snapshots, (s) => s.linkedin.followers, LINKEDIN_TARGETS.followers);
-  const nlSeries = buildSeries(snapshots, (s) => s.newsletter.subscribers, NEWSLETTER_TARGETS.subscribers);
+export default async function PilotageHome(): Promise<React.ReactElement> {
+  const reports = await listRecentReports(8);
+  const currentWeekKey = fmtWeekKey(weekStartOf(new Date()));
+  const hasCurrent = reports.some((r) => fmtWeekKey(new Date(r.weekStart)) === currentWeekKey);
 
   return (
-    <div>
-      <div className="mb-6 flex items-baseline justify-between">
+    <div className="space-y-6">
+      <header className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-xl font-medium text-ink">Vue d&rsquo;ensemble</h1>
+          <h1 className="text-2xl font-semibold text-ink">Mes performances marketing</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Dernière donnée&nbsp;: <strong className="font-medium text-ink">{fmtPeriodLong(last.period)}</strong> · cible&nbsp;: sept. 2026
+            Saisis chaque semaine ce que tu as publié et les chiffres clés. Les semaines passées restent éditables.
           </p>
         </div>
-      </div>
+        {!hasCurrent && (
+          <Link
+            href={`/pilotage/semaine/${currentWeekKey}`}
+            className="rounded-md bg-accent px-3 py-2 text-xs font-medium text-white hover:opacity-90"
+          >
+            Saisir la semaine en cours
+          </Link>
+        )}
+      </header>
 
-      <ChannelGrid summaries={summaries} />
-
-      <SectionTitle>Projections vers septembre 2026</SectionTitle>
-      <Card>
-        <CardBody className="space-y-4">
-          <ObjectiveProgress
-            label="LinkedIn — abonnés"
-            current={last.linkedin.followers}
-            expected={liProjection.projected}
-            target={liProjection.target}
-          />
-          <ObjectiveProgress
-            label="Newsletter — abonnés"
-            current={last.newsletter.subscribers}
-            expected={nlProjection.projected}
-            target={nlProjection.target}
-          />
-          <ObjectiveProgress
-            label="SEO — clics organiques/mois"
-            current={last.seo.clicks}
-            expected={seoProjection.projected}
-            target={seoProjection.target}
-          />
-          <ObjectiveProgress
-            label="GEO — Share of Voice IA"
-            current={last.geo.shareOfVoice}
-            expected={geoProjection.projected}
-            target={geoProjection.target}
-            format="percent"
-          />
-        </CardBody>
-      </Card>
-
-      <p className="mt-3 text-xs text-ink-subtle">
-        Le repère vertical sur chaque barre indique la <strong className="font-medium text-ink-muted">projection</strong> calculée par régression linéaire sur les 3 derniers mois.
-      </p>
-
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardBody>
-            <h3 className="text-sm font-medium text-ink">LinkedIn — trajectoire abonnés</h3>
-            <p className="mt-0.5 text-xs text-ink-muted">
-              Cible sept. : <strong className="font-medium text-ink">900</strong> · projection : {fmtNumber(liProjection.projected)}
-            </p>
-            <div className="mt-4">
-              <ProgressionChart data={liSeries} label="Abonnés réels" />
-            </div>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <h3 className="text-sm font-medium text-ink">Newsletter — trajectoire abonnés</h3>
-            <p className="mt-0.5 text-xs text-ink-muted">
-              Cible sept. : <strong className="font-medium text-ink">210</strong> · projection : {fmtNumber(nlProjection.projected)}
-            </p>
-            <div className="mt-4">
-              <ProgressionChart data={nlSeries} label="Abonnés réels" />
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-
-      <SectionTitle>Lecture rapide</SectionTitle>
-      <Card>
-        <CardBody className="space-y-2 text-sm leading-relaxed text-ink-muted">
-          <p>
-            Sur le mois <strong className="font-medium text-ink">{fmtPeriodLong(last.period)}</strong> :
+      {reports.length === 0 ? (
+        <div className="rounded-lg border border-surface-muted bg-surface p-8 text-center">
+          <p className="text-sm text-ink-muted">
+            Aucune semaine enregistrée pour le moment.
           </p>
-          <ul className="list-inside list-disc space-y-1">
-            <li>
-              LinkedIn : <strong className="font-medium text-ink">{fmtNumber(last.linkedin.followers)}</strong> abonnés
-              ({fmtPercent(last.linkedin.engagementRate)} d&rsquo;engagement, {last.linkedin.formLeads} lead{last.linkedin.formLeads > 1 ? "s" : ""}).
-            </li>
-            <li>
-              Newsletter : <strong className="font-medium text-ink">{fmtNumber(last.newsletter.subscribers)}</strong> abonnés ·
-              open rate {fmtPercent(last.newsletter.openRate)}.
-            </li>
-            <li>
-              SEO : <strong className="font-medium text-ink">{fmtNumber(last.seo.clicks)}</strong> clics ·
-              {fmtNumber(last.seo.pagesTop10)} page{last.seo.pagesTop10 > 1 ? "s" : ""} en pos. 1–10.
-            </li>
-            <li>
-              GEO : Share of Voice {fmtPercent(last.geo.shareOfVoice)} ·
-              {fmtNumber(last.geo.citationsCount)} citation{last.geo.citationsCount > 1 ? "s" : ""} IA.
-            </li>
-          </ul>
-        </CardBody>
-      </Card>
+          <Link
+            href={`/pilotage/semaine/${currentWeekKey}`}
+            className="mt-3 inline-block rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Démarrer la 1ère semaine
+          </Link>
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {reports.map((r) => {
+            const key = fmtWeekKey(new Date(r.weekStart));
+            const isCurrent = key === currentWeekKey;
+            return (
+              <li key={r.id}>
+                <Link
+                  href={`/pilotage/semaine/${key}`}
+                  className={`block rounded-lg border bg-surface px-4 py-3 hover:border-accent ${
+                    isCurrent ? "border-accent" : "border-surface-muted"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-medium uppercase tracking-wide text-ink-subtle">
+                      {isCurrent ? "Cette semaine" : "Semaine passée"}
+                    </span>
+                    <span className="text-[11px] text-ink-subtle">
+                      Mis à jour {new Date(r.updatedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                    </span>
+                  </div>
+                  <h2 className="mt-1 text-sm font-medium text-ink">{fmtWeekLabel(r.weekStart)}</h2>
+
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <dt className="text-ink-subtle">Posts LinkedIn</dt>
+                      <dd className="font-medium text-ink">{r.posts.length}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-subtle">Newsletter</dt>
+                      <dd className="font-medium text-ink">{r.newsletter ? "Publiée" : "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-subtle">Actions SEO/GEO</dt>
+                      <dd className="font-medium text-ink">{r.seoGeoActions.length}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-subtle">LinkedIn followers</dt>
+                      <dd className="font-medium text-ink">{fmtNum(r.linkedinFollowers)}</dd>
+                    </div>
+                  </dl>
+
+                  {r.notes && (
+                    <p className="mt-3 line-clamp-2 text-[11px] italic text-ink-muted">
+                      « {r.notes} »
+                    </p>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {reports.length > 0 && (
+        <div className="pt-4 text-center">
+          <Link
+            href={`/pilotage/semaine/${currentWeekKey}`}
+            className="text-xs text-ink-muted hover:text-accent"
+          >
+            + Saisir / éditer une autre semaine
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
